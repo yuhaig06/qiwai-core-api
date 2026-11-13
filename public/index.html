@@ -146,10 +146,10 @@
     // CARTO mien phi, than thien Leaflet, phu song toan cau (gan giong Google Maps)
     const tileProviders = [
       {
-        name: 'CARTO Dark',
-        layer: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-          attribution: '&copy; OpenStreetMap contributors &copy; CARTO | QIWAI Urban Layer',
-          subdomains: 'abcd', maxZoom: 20
+        name: 'Esri World Street',
+        layer: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+          attribution: 'Tiles &copy; Esri | QIWAI Urban Layer',
+          maxZoom: 19
         })
       },
       {
@@ -160,9 +160,9 @@
         })
       },
       {
-        name: 'Esri World Street',
-        layer: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-          attribution: 'Tiles &copy; Esri | QIWAI Urban Layer',
+        name: 'Esri World Imagery',
+        layer: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics | QIWAI Urban Layer',
           maxZoom: 19
         })
       }
