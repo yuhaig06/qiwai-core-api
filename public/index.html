@@ -137,10 +137,19 @@
     let authUser = JSON.parse(localStorage.getItem('qiwai_user') || 'null');
     let pendingPoint = null;
 
+    // Khoa khung nhin tap trung vao TP.HCM va vung phu can (Giai doan Pilot)
+    const hcmcBounds = [
+      [10.35, 106.30], // Canh Tay Nam (Can Gio / Binh Chanh)
+      [11.20, 107.05]  // Canh Dong Bac (Cu Chi / Thu Duc)
+    ];
+
     const map = L.map('map', {
-      maxBounds: [[10.35, 106.35], [11.15, 107.05]],
-      maxBoundsViscosity: 0.7
-    }).setView([10.8000, 106.6600], 12);
+      center: [10.8000, 106.6600],
+      zoom: 13,
+      minZoom: 11,
+      maxBounds: hcmcBounds,
+      maxBoundsViscosity: 0.8
+    });
 
     // Tile providers theo chuoi du phong: CARTO dark -> OSM -> Esri
     // CARTO mien phi, than thien Leaflet, phu song toan cau (gan giong Google Maps)
