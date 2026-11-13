@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:," />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>QIWAI — Hệ Sinh Thái An Ninh & Đô Thị Thông Minh</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+    body { background: #0f172a; color: #f8fafc; display: flex; flex-direction: column; height: 100vh; }
+    header { background: #1e293b; padding: 14px 20px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+    header h1 { font-size: 1.2rem; color: #38bdf8; letter-spacing: 1px; }
+    .container { display: flex; flex: 1; overflow: hidden; flex-wrap: wrap; }
+    .panel { width: 400px; max-width: 100%; background: #1e293b; padding: 20px; border-right: 1px solid #334155; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+    #map { flex: 1; min-height: 350px; }
+    .card { background: #0f172a; padding: 15px; border-radius: 10px; border: 1px solid #334155; }
+    .card h2 { font-size: 1rem; margin-bottom: 12px; color: #e2e8f0; }
+    select, input, textarea, button { width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 6px; border: 1px solid #475569; background: #1e293b; color: #fff; font-size: 0.9rem; }
+    button { background: #0284c7; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
+    button:hover { background: #0369a1; }
+    .btn-urban { background: #059669; }
+    .btn-urban:hover { background: #047857; }
+    .btn-row { display: flex; gap: 8px; }
+    .btn-row button { flex: 1; }
+    .result-box { padding: 12px; border-radius: 6px; font-size: 0.85rem; line-height: 1.4; display: none; }
+    .DANGEROUS { background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #fca5a5; }
+    .SUSPICIOUS { background: rgba(245, 158, 11, 0.2); border: 1px solid #f59e0b; color: #fcd34d; }
+    .SAFE { background: rgba(16, 185, 129, 0.2); border: 1px solid #10b981; color: #6ee7b7; }
+    .hidden { display: none !important; }
+    .hint { font-size: 0.78rem; color: #94a3b8; }
+    #pulseFormCard { border-color: #38bdf8; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⚡ QIWAI CORE — COMMAND CENTER</h1>
+    <span style="font-size: 0.8rem; color: #94a3b8;">TP. Hồ Chí Minh Pilot</span>
+  </header>
+
+  <div class="container">
+    <div class="panel">
+      <div class="card" id="authCard">
+        <h2>🔐 Tài khoản QIWAI</h2>
+        <div id="authGuest">
+          <input id="authId" type="text" placeholder="SĐT hoặc Email" autocomplete="username" />
+          <input id="authPass" type="password" placeholder="Mật khẩu (tối thiểu 6 ký tự)" autocomplete="current-password" />
+          <div class="btn-row">
+            <button onclick="doLogin()">Đăng nhập</button>
+            <button class="btn-urban" onclick="doRegister()">Đăng ký</button>
+          </div>
+        </div>
+        <div id="authUser" class="hidden">
+          <p style="font-size:0.9rem;">👤 <strong id="authUserName"></strong></p>
+          <p class="hint">Uy tín: <span id="authTrust">100</span> điểm</p>
+          <button class="btn-urban" onclick="doLogout()">Đăng xuất</button>
+        </div>
+        <div id="authMsg" class="hint" style="margin-top:6px;"></div>
+      </div>
+
+      <div class="card">
+        <h2>🛡️ QIWAI Shield (Xác thực AI 3 Lớp)</h2>
+        <select id="shieldType">
+          <option value="TEXT_PATTERN">Tin nhắn / Văn bản nghi vấn</option>
+          <option value="URL">Đường link (URL)</option>
+          <option value="PHONE">Số điện thoại lạ</option>
+        </select>
+        <textarea id="shieldContent" rows="3" placeholder="Dán tin nhắn, link hoặc SĐT cần kiểm tra..."></textarea>
+        <button onclick="analyzeShield()">Quét Rủi Ro Ngay</button>
+        <div id="shieldResult" class="result-box"></div>
+      </div>
+
+      <div class="card hidden" id="pulseFormCard">
+        <h2>📍 Ghim cảnh báo tại điểm đã chọn</h2>
+        <p class="hint" id="pulseCoords"></p>
+        <select id="pulseType">
+          <option value="FLOOD">Ngập nước (FLOOD)</option>
+          <option value="TRAFFIC_JAM">Kẹt xe (TRAFFIC_JAM)</option>
+          <option value="CONSTRUCTION">Công trình (CONSTRUCTION)</option>
+          <option value="SECURITY">An ninh (SECURITY)</option>
+        </select>
+        <input id="pulseDesc" type="text" placeholder="Mô tả ngắn (vd: ngập 30cm sau mưa)" maxlength="255" />
+        <button class="btn-urban" onclick="submitPulse()">Ghim lên bản đồ</button>
+        <div id="pulseMsg" class="hint"></div>
+      </div>
+
+      <div class="card">
+        <h2>🗺️ QIWAI Urban (Bản đồ Biến động)</h2>
+        <p class="hint" style="margin-bottom:10px;">Bấm trực tiếp lên bản đồ để ghim cảnh báo, hoặc quét nhanh:</p>
+        <button class="btn-urban" onclick="loadUrbanPulses(10.8425, 106.6132)">Quét Khu Vực Quận 12</button>
+        <button class="btn-urban" onclick="loadUrbanPulses(10.7769, 106.7009)">Quét Khu Vực Quận 1</button>
+        <div id="urbanStatus" style="font-size: 0.8rem; color: #38bdf8; margin-top: 5px;"></div>
+      </div>
+    </div>
+
+    <div id="map"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    let authToken = localStorage.getItem('qiwai_token') || '';
+    let authUser = JSON.parse(localStorage.getItem('qiwai_user') || 'null');
+    let pendingPoint = null;
+
+    const map = L.map('map').setView([10.8000, 106.6600], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap | QIWAI Urban Layer'
+    }).addTo(map);
+
+    let markersLayer = L.layerGroup().addTo(map);
+    let pendingMarker = null;
+
+    function escapeHtml(str) {
+      return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    map.on('click', function (e) {
+      pendingPoint = { lat: e.latlng.lat, lng: e.latlng.lng };
+      document.getElementById('pulseCoords').innerText =
+        'Tọa độ: ' + pendingPoint.lat.toFixed(5) + ', ' + pendingPoint.lng.toFixed(5);
+      document.getElementById('pulseFormCard').classList.remove('hidden');
+      document.getElementById('pulseFormCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (pendingMarker) map.removeLayer(pendingMarker);
+      pendingMarker = L.circleMarker([pendingPoint.lat, pendingPoint.lng], {
+        color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: 0.5, radius: 10
+      }).addTo(map);
+    });
+
+    function authHeaders() {
+      return authToken ? { 'Authorization': 'Bearer ' + authToken } : {};
+    }
+
+    function renderAuth() {
+      const guest = document.getElementById('authGuest');
+      const userBox = document.getElementById('authUser');
+      if (authUser && authToken) {
+        guest.classList.add('hidden');
+        userBox.classList.remove('hidden');
+        document.getElementById('authUserName').innerText = authUser.phone_or_email;
+        document.getElementById('authTrust').innerText = authUser.trust_score;
+      } else {
+        guest.classList.remove('hidden');
+        userBox.classList.add('hidden');
+      }
+    }
+
+    async function doLogin() {
+      const phone_or_email = document.getElementById('authId').value.trim();
+      const password = document.getElementById('authPass').value;
+      const msg = document.getElementById('authMsg');
+      try {
+        const res = await fetch('/api/v1/auth/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone_or_email, password })
+        });
+        const json = await res.json();
+        if (json.success) {
+          authToken = json.token; authUser = json.user;
+          localStorage.setItem('qiwai_token', authToken);
+          localStorage.setItem('qiwai_user', JSON.stringify(authUser));
+          msg.innerText = 'Đăng nhập thành công!';
+          renderAuth();
+        } else { msg.innerText = '❌ ' + (json.message || 'Đăng nhập thất bại'); }
+      } catch (e) { msg.innerText = '❌ Lỗi kết nối server.'; }
+    }
+
+    async function doRegister() {
+      const phone_or_email = document.getElementById('authId').value.trim();
+      const password = document.getElementById('authPass').value;
+      const msg = document.getElementById('authMsg');
+      try {
+        const res = await fetch('/api/v1/auth/register', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone_or_email, password })
+        });
+        const json = await res.json();
+        msg.innerText = json.success ? '✅ ' + json.message + ' — Giờ đăng nhập nhé!' : '❌ ' + (json.message || 'Đăng ký thất bại');
+      } catch (e) { msg.innerText = '❌ Lỗi kết nối server.'; }
+    }
+
+    function doLogout() {
+      authToken = ''; authUser = null;
+      localStorage.removeItem('qiwai_token');
+      localStorage.removeItem('qiwai_user');
+      renderAuth();
+    }
+
+    async function submitPulse() {
+      const msg = document.getElementById('pulseMsg');
+      if (!pendingPoint) return;
+      if (!authToken) { msg.innerText = '❌ Vui lòng đăng nhập để ghim cảnh báo.'; return; }
+
+      const pulse_type = document.getElementById('pulseType').value;
+      const description = document.getElementById('pulseDesc').value;
+      msg.innerText = '⏳ Đang ghim...';
+
+      try {
+        const res = await fetch('/api/v1/urban/pulses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({
+            pulse_type, latitude: pendingPoint.lat, longitude: pendingPoint.lng, description
+          })
+        });
+        const json = await res.json();
+        if (json.success) {
+          msg.innerText = '✅ ' + json.message;
+          document.getElementById('pulseFormCard').classList.add('hidden');
+          const c = map.getCenter();
+          loadUrbanPulses(c.lat, c.lng);
+          pendingPoint = null;
+          if (pendingMarker) { map.removeLayer(pendingMarker); pendingMarker = null; }
+        } else {
+          msg.innerText = '❌ ' + (json.message || 'Gửi thất bại');
+        }
+      } catch (e) { msg.innerText = '❌ Lỗi kết nối server.'; }
+    }
+
+    async function analyzeShield() {
+      const type = document.getElementById('shieldType').value;
+      const content = document.getElementById('shieldContent').value;
+      const resultBox = document.getElementById('shieldResult');
+
+      if (!content.trim()) return alert('Vui lòng nhập nội dung cần kiểm tra!');
+
+      resultBox.style.display = 'block';
+      resultBox.className = 'result-box';
+      resultBox.innerHTML = '⏳ Đang quét qua lõi QIWAI...';
+
+      try {
+        const res = await fetch('/api/v1/shield/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, content })
+        });
+        const json = await res.json();
+
+        if (json.success) {
+          const d = json.data;
+          const safeLevel = ['SAFE','SUSPICIOUS','DANGEROUS'].includes(d.risk_level) ? d.risk_level : '';
+          resultBox.className = 'result-box ' + safeLevel;
+          resultBox.innerHTML =
+            '<strong>Mức độ: ' + escapeHtml(d.risk_level) + ' (' + escapeHtml(d.risk_score) + '/100 điểm)</strong><br/>' +
+            '<small>Nguồn xử lý: ' + escapeHtml(json.source) + '</small><br/><br/>' +
+            escapeHtml(d.analysis);
+        } else {
+          resultBox.innerHTML = '❌ ' + escapeHtml(json.message);
+        }
+      } catch (err) {
+        resultBox.innerHTML = '❌ Lỗi kết nối tới QIWAI Core Server.';
+      }
+    }
+
+    async function loadUrbanPulses(lat, lng) {
+      const statusEl = document.getElementById('urbanStatus');
+      statusEl.innerText = '⏳ Đang tải lớp phủ Geohash...';
+      map.flyTo([lat, lng], 14);
+
+      try {
+        const res = await fetch(`/api/v1/urban/pulses?lat=${lat}&lng=${lng}`);
+        const json = await res.json();
+
+        markersLayer.clearLayers();
+        if (json.success) {
+          statusEl.innerText = `✅ Tìm thấy ${json.count} điểm biến động (Vùng Geohash: ${json.area_center_geohash})`;
+          json.data.forEach(p => {
+            const marker = L.circleMarker([p.latitude, p.longitude], {
+              color: '#ef4444', fillColor: '#f87171', fillOpacity: 0.7, radius: 12
+            }).addTo(markersLayer);
+            marker.bindPopup(
+              '<b>🚨 ' + escapeHtml(p.pulse_type) + '</b><br/>' +
+              escapeHtml(p.description || 'Cảnh báo đô thị') + '<br/>' +
+              '<small>Trạng thái: ' + escapeHtml(p.status) + '</small>'
+            ).openPopup();
+          });
+        }
+      } catch (err) {
+        statusEl.innerText = '❌ Lỗi tải dữ liệu bản đồ.';
+      }
+    }
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+      });
+    }
+
+    renderAuth();
+    loadUrbanPulses(10.8425, 106.6132);
+  </script>
+</body>
+</html>

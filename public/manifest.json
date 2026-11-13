@@ -1,0 +1,14 @@
+{
+  "name": "QIWAI 2050 — An Ninh & Đô Thị Thông Minh",
+  "short_name": "QIWAI",
+  "description": "Hệ sinh thái cảnh báo lừa đảo AI và bản đồ biến động đô thị TP.HCM",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
