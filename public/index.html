@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" href="data:," />
+  <link rel="icon" type="image/png" href="/favicon.png" />
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#0f172a" />
   <title>QIWAI 2050 — An Ninh & Đô Thị Thông Minh</title>
@@ -113,6 +113,7 @@
               <div class="d-flex flex-column gap-2">
                 <button class="btn btn-success" onclick="loadUrbanPulses(10.8425, 106.6132)"><i class="bi bi-pin-angle"></i> Quét Quận 12</button>
                 <button class="btn btn-success" onclick="loadUrbanPulses(10.7769, 106.7009)"><i class="bi bi-pin-angle"></i> Quét Quận 1</button>
+                <div class="d-flex flex-wrap gap-1 mt-2" id="districtChips"></div>
               </div>
               <div id="urbanStatus" class="small text-info mt-2"></div>
             </div>
@@ -136,10 +137,28 @@
     let authUser = JSON.parse(localStorage.getItem('qiwai_user') || 'null');
     let pendingPoint = null;
 
-    const map = L.map('map').setView([10.8000, 106.6600], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const map = L.map('map', {
+      maxBounds: [[10.35, 106.35], [11.15, 107.05]],
+      maxBoundsViscosity: 0.7
+    }).setView([10.8000, 106.6600], 12);
+
+    // Tile chinh: OpenStreetMap. Neu bi chan -> tu dong chuyen sang CARTO dark
+    const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap | QIWAI Urban Layer'
-    }).addTo(map);
+    });
+    const cartoLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO | QIWAI Urban Layer',
+      subdomains: 'abcd', maxZoom: 20
+    });
+    let tileSwitched = false;
+    osmLayer.on('tileerror', function () {
+      if (tileSwitched) return;
+      tileSwitched = true;
+      map.removeLayer(osmLayer);
+      cartoLayer.addTo(map);
+      showToast('Tile OSM bị chặn — đã chuyển sang bản đồ CARTO.', 'warning');
+    });
+    osmLayer.addTo(map);
 
     let markersLayer = L.layerGroup().addTo(map);
     let pendingMarker = null;
@@ -345,6 +364,24 @@
         navigator.serviceWorker.register('/service-worker.js').catch(() => {});
       });
     }
+
+    // Chips quet nhanh toan TP.HCM
+    const DISTRICTS = [
+      ['Quận 1', 10.7769, 106.7009], ['Quận 3', 10.7760, 106.6860],
+      ['Quận 5', 10.7570, 106.6750], ['Quận 7', 10.7950, 106.7150],
+      ['Quận 10', 10.8310, 106.7650], ['Phú Nhuận', 10.8000, 106.6800],
+      ['Bình Thạnh', 10.8080, 106.7200], ['Gò Vấp', 10.8400, 106.6600],
+      ['Tân Bình', 10.8010, 106.6500], ['Bình Tân', 10.7570, 106.6000],
+      ['Thủ Đức', 10.8500, 106.7700], ['Quận 12', 10.8425, 106.6132]
+    ];
+    const chipsBox = document.getElementById('districtChips');
+    DISTRICTS.forEach(d => {
+      const b = document.createElement('button');
+      b.className = 'btn btn-sm btn-outline-info py-1 px-2';
+      b.innerHTML = '<i class="bi bi-geo"></i> ' + escapeHtml(d[0]);
+      b.onclick = () => loadUrbanPulses(d[1], d[2]);
+      chipsBox.appendChild(b);
+    });
 
     renderAuth();
     loadUrbanPulses(10.8425, 106.6132);
