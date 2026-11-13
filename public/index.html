@@ -111,8 +111,7 @@
               <h2 class="card-title mb-2"><i class="bi bi-map text-success"></i> QIWAI Urban</h2>
               <p class="text-muted small mb-2">Bấm trực tiếp lên bản đồ để ghim cảnh báo, hoặc quét nhanh:</p>
               <div class="d-flex flex-column gap-2">
-                <button class="btn btn-success" onclick="loadUrbanPulses(10.8425, 106.6132)"><i class="bi bi-pin-angle"></i> Quét Quận 12</button>
-                <button class="btn btn-success" onclick="loadUrbanPulses(10.7769, 106.7009)"><i class="bi bi-pin-angle"></i> Quét Quận 1</button>
+                <button class="btn btn-success" onclick="loadUrbanPulses(10.95, 106.95)"><i class="bi bi-pin-angle"></i> Quét toàn TP.HCM mở rộng</button>
                 <div class="d-flex flex-wrap gap-1 mt-2" id="districtChips"></div>
               </div>
               <div id="urbanStatus" class="small text-info mt-2"></div>
@@ -137,16 +136,16 @@
     let authUser = JSON.parse(localStorage.getItem('qiwai_user') || 'null');
     let pendingPoint = null;
 
-    // Khoa khung nhin tap trung vao TP.HCM va vung phu can (Giai doan Pilot)
+    // Khoa khung nhin TP.HCM mo rong 2026 (gom Binh Duong + Ba Ria - Vung Tau)
     const hcmcBounds = [
-      [10.35, 106.30], // Canh Tay Nam (Can Gio / Binh Chanh)
-      [11.20, 107.05]  // Canh Dong Bac (Cu Chi / Thu Duc)
+      [10.30, 106.30], // Canh Tay Nam (Vung Tau / Can Gio)
+      [11.55, 107.65]  // Canh Dong Bac (Dau Tieng / Xuyen Moc)
     ];
 
     const map = L.map('map', {
-      center: [10.8000, 106.6600],
-      zoom: 13,
-      minZoom: 11,
+      center: [10.95, 106.95],
+      zoom: 11,
+      minZoom: 9,
       maxBounds: hcmcBounds,
       maxBoundsViscosity: 0.8
     });
@@ -404,12 +403,15 @@
 
     // Chips quet nhanh toan TP.HCM
     const DISTRICTS = [
-      ['Quận 1', 10.7769, 106.7009], ['Quận 3', 10.7760, 106.6860],
-      ['Quận 5', 10.7570, 106.6750], ['Quận 7', 10.7950, 106.7150],
-      ['Quận 10', 10.8310, 106.7650], ['Phú Nhuận', 10.8000, 106.6800],
-      ['Bình Thạnh', 10.8080, 106.7200], ['Gò Vấp', 10.8400, 106.6600],
-      ['Tân Bình', 10.8010, 106.6500], ['Bình Tân', 10.7570, 106.6000],
-      ['Thủ Đức', 10.8500, 106.7700], ['Quận 12', 10.8425, 106.6132]
+      ['Trung tâm', 10.7769, 106.7009], ['Thủ Đức', 10.8500, 106.7700],
+      ['Bình Dương', 10.9800, 106.7200], ['Thuận An', 10.9100, 106.7600],
+      ['Dĩ An', 10.8900, 106.8000], ['Thủ Dầu Một', 10.9800, 106.6500],
+      ['Dầu Tiếng', 11.2800, 106.5900], ['Bàu Bàng', 11.3100, 106.6500],
+      ['Bà Rịa', 10.5000, 107.2000], ['Vũng Tàu', 10.3460, 107.0840],
+      ['Phú Mỹ', 10.5700, 107.0500], ['Củ Chi', 10.9700, 106.4900],
+      ['Cần Giờ', 10.4000, 106.9500], ['Bình Chánh', 10.7000, 106.6000],
+      ['Hóc Môn', 10.8800, 106.6000], ['Gò Vấp', 10.8400, 106.6600],
+      ['Bình Tân', 10.7570, 106.6000], ['Tân Bình', 10.8010, 106.6500]
     ];
     const chipsBox = document.getElementById('districtChips');
     DISTRICTS.forEach(d => {
@@ -421,7 +423,7 @@
     });
 
     renderAuth();
-    loadUrbanPulses(10.8425, 106.6132);
+    loadUrbanPulses(10.95, 106.95);
   </script>
 </body>
 </html>
