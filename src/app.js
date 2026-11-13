@@ -7,6 +7,7 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 
 // Tắt CSP để phục vụ Leaflet CDN + inline script (MVP dev)
+app.set('trust proxy', 1); // Render/Cloud chay sau proxy -> rate limit doc IP that
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json({ limit: '10kb' }));
