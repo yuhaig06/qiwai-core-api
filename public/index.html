@@ -255,6 +255,7 @@
     async function doLogin() {
       const phone_or_email = document.getElementById('authId').value.trim();
       const password = document.getElementById('authPass').value;
+      if (!phone_or_email || !password) return showToast('Vui lòng nhập đủ SĐT/Email và mật khẩu.', 'warning');
       try {
         const res = await fetch('/api/v1/auth/login', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -275,6 +276,8 @@
     async function doRegister() {
       const phone_or_email = document.getElementById('authId').value.trim();
       const password = document.getElementById('authPass').value;
+      if (!phone_or_email) return showToast('Vui lòng nhập SĐT hoặc Email.', 'warning');
+      if (!password || password.length < 6) return showToast('Mật khẩu phải có ít nhất 6 ký tự.', 'warning');
       try {
         const res = await fetch('/api/v1/auth/register', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
