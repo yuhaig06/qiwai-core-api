@@ -1,103 +1,135 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="vi" data-bs-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" href="data:," />
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#0f172a" />
-  <title>QIWAI — Hệ Sinh Thái An Ninh & Đô Thị Thông Minh</title>
+  <title>QIWAI 2050 — An Ninh & Đô Thị Thông Minh</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
-    body { background: #0f172a; color: #f8fafc; display: flex; flex-direction: column; height: 100vh; }
-    header { background: #1e293b; padding: 14px 20px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
-    header h1 { font-size: 1.2rem; color: #38bdf8; letter-spacing: 1px; }
-    .container { display: flex; flex: 1; overflow: hidden; flex-wrap: wrap; }
-    .panel { width: 400px; max-width: 100%; background: #1e293b; padding: 20px; border-right: 1px solid #334155; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
-    #map { flex: 1; min-height: 350px; }
-    .card { background: #0f172a; padding: 15px; border-radius: 10px; border: 1px solid #334155; }
-    .card h2 { font-size: 1rem; margin-bottom: 12px; color: #e2e8f0; }
-    select, input, textarea, button { width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 6px; border: 1px solid #475569; background: #1e293b; color: #fff; font-size: 0.9rem; }
-    button { background: #0284c7; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
-    button:hover { background: #0369a1; }
-    .btn-urban { background: #059669; }
-    .btn-urban:hover { background: #047857; }
-    .btn-row { display: flex; gap: 8px; }
-    .btn-row button { flex: 1; }
-    .result-box { padding: 12px; border-radius: 6px; font-size: 0.85rem; line-height: 1.4; display: none; }
-    .DANGEROUS { background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #fca5a5; }
-    .SUSPICIOUS { background: rgba(245, 158, 11, 0.2); border: 1px solid #f59e0b; color: #fcd34d; }
-    .SAFE { background: rgba(16, 185, 129, 0.2); border: 1px solid #10b981; color: #6ee7b7; }
-    .hidden { display: none !important; }
-    .hint { font-size: 0.78rem; color: #94a3b8; }
-    #pulseFormCard { border-color: #38bdf8; }
+    body { background: #0b1120; min-height: 100vh; }
+    .navbar-brand { font-weight: 800; letter-spacing: .5px; }
+    .brand-text { color: #38bdf8; }
+    .qiwai-shell { height: calc(100vh - 64px); }
+    .panel-col { height: 100%; overflow-y: auto; }
+    .map-col { height: 100%; position: relative; }
+    #map { position: absolute; inset: 0; }
+    .qiwai-card { background: #111a2e; border: 1px solid #1e293b; border-radius: 14px; }
+    .qiwai-card .card-title { font-size: .95rem; font-weight: 600; }
+    .result-box { border-radius: 10px; font-size: .85rem; line-height: 1.45; display: none; }
+    .result-box.show { display: block; }
+    .DANGEROUS { background: rgba(239,68,68,.15); border: 1px solid #ef4444; color: #fca5a5; }
+    .SUSPICIOUS { background: rgba(245,158,11,.15); border: 1px solid #f59e0b; color: #fcd34d; }
+    .SAFE { background: rgba(16,185,129,.15); border: 1px solid #10b981; color: #6ee7b7; }
+    .pulse-highlight { border-color: #38bdf8 !important; box-shadow: 0 0 0 1px #38bdf8; }
+    .leaflet-popup-content { color: #0f172a; }
+    @media (max-width: 991.98px) {
+      .qiwai-shell { height: auto; }
+      .map-col { height: 60vh; min-height: 320px; }
+      .panel-col { max-height: none; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>⚡ QIWAI CORE — COMMAND CENTER</h1>
-    <span style="font-size: 0.8rem; color: #94a3b8;">TP. Hồ Chí Minh Pilot</span>
-  </header>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary-subtle px-3">
+    <span class="navbar-brand mb-0"><i class="bi bi-lightning-charge-fill text-warning"></i> <span class="brand-text">QIWAI</span> CORE</span>
+    <span class="badge text-bg-secondary">TP.HCM Pilot</span>
+    <div class="ms-auto d-flex align-items-center gap-2">
+      <span id="navUser" class="small text-muted"></span>
+      <button id="navLogout" class="btn btn-sm btn-outline-danger d-none" onclick="doLogout()"><i class="bi bi-box-arrow-right"></i> Thoát</button>
+    </div>
+  </nav>
 
-  <div class="container">
-    <div class="panel">
-      <div class="card" id="authCard">
-        <h2>🔐 Tài khoản QIWAI</h2>
-        <div id="authGuest">
-          <input id="authId" type="text" placeholder="SĐT hoặc Email" autocomplete="username" />
-          <input id="authPass" type="password" placeholder="Mật khẩu (tối thiểu 6 ký tự)" autocomplete="current-password" />
-          <div class="btn-row">
-            <button onclick="doLogin()">Đăng nhập</button>
-            <button class="btn-urban" onclick="doRegister()">Đăng ký</button>
+  <div class="container-fluid qiwai-shell">
+    <div class="row g-3 h-100 p-3">
+      <!-- PANEL TRAI -->
+      <div class="col-lg-4 panel-col">
+        <div class="d-flex flex-column gap-3">
+
+          <!-- AUTH -->
+          <div class="card qiwai-card" id="authCard">
+            <div class="card-body">
+              <h2 class="card-title mb-3"><i class="bi bi-person-lock text-primary"></i> Tài khoản QIWAI</h2>
+              <div id="authGuest">
+                <div class="mb-2">
+                  <input id="authId" type="text" class="form-control" placeholder="SĐT hoặc Email" autocomplete="username" />
+                </div>
+                <div class="mb-3">
+                  <input id="authPass" type="password" class="form-control" placeholder="Mật khẩu (tối thiểu 6 ký tự)" autocomplete="current-password" />
+                </div>
+                <div class="d-flex gap-2">
+                  <button class="btn btn-primary flex-fill" onclick="doLogin()"><i class="bi bi-box-arrow-in-right"></i> Đăng nhập</button>
+                  <button class="btn btn-outline-success flex-fill" onclick="doRegister()"><i class="bi bi-person-plus"></i> Đăng ký</button>
+                </div>
+              </div>
+              <div id="authUser" class="d-none">
+                <p class="mb-1"><i class="bi bi-person-check-fill text-success"></i> <strong id="authUserName"></strong></p>
+                <p class="text-muted small mb-2">Uy tín: <span class="badge text-bg-info" id="authTrust">100</span></p>
+              </div>
+            </div>
+          </div>
+
+          <!-- SHIELD -->
+          <div class="card qiwai-card">
+            <div class="card-body">
+              <h2 class="card-title mb-3"><i class="bi bi-shield-lock text-info"></i> QIWAI Shield — Xác thực AI 3 lớp</h2>
+              <select id="shieldType" class="form-select mb-2">
+                <option value="TEXT_PATTERN">Tin nhắn / Văn bản nghi vấn</option>
+                <option value="URL">Đường link (URL)</option>
+                <option value="PHONE">Số điện thoại lạ</option>
+              </select>
+              <textarea id="shieldContent" class="form-control mb-2" rows="3" placeholder="Dán tin nhắn, link hoặc SĐT cần kiểm tra..."></textarea>
+              <button class="btn btn-info w-100 text-dark fw-bold" onclick="analyzeShield()"><i class="bi bi-search"></i> Quét Rủi Ro Ngay</button>
+              <div id="shieldResult" class="result-box mt-2"></div>
+            </div>
+          </div>
+
+          <!-- PULSE FORM (an khi click ban do) -->
+          <div class="card qiwai-card d-none" id="pulseFormCard">
+            <div class="card-body">
+              <h2 class="card-title mb-2"><i class="bi bi-geo-alt text-primary"></i> Ghim cảnh báo</h2>
+              <p class="text-muted small mb-2" id="pulseCoords"></p>
+              <select id="pulseType" class="form-select mb-2">
+                <option value="FLOOD">Ngập nước (FLOOD)</option>
+                <option value="TRAFFIC_JAM">Kẹt xe (TRAFFIC_JAM)</option>
+                <option value="CONSTRUCTION">Công trình (CONSTRUCTION)</option>
+                <option value="SECURITY">An ninh (SECURITY)</option>
+              </select>
+              <input id="pulseDesc" type="text" class="form-control mb-2" placeholder="Mô tả ngắn (vd: ngập 30cm sau mưa)" maxlength="255" />
+              <button class="btn btn-success w-100" onclick="submitPulse()"><i class="bi bi-pin-map"></i> Ghim lên bản đồ</button>
+              <div id="pulseMsg" class="small mt-2"></div>
+            </div>
+          </div>
+
+          <!-- URBAN -->
+          <div class="card qiwai-card">
+            <div class="card-body">
+              <h2 class="card-title mb-2"><i class="bi bi-map text-success"></i> QIWAI Urban</h2>
+              <p class="text-muted small mb-2">Bấm trực tiếp lên bản đồ để ghim cảnh báo, hoặc quét nhanh:</p>
+              <div class="d-flex flex-column gap-2">
+                <button class="btn btn-success" onclick="loadUrbanPulses(10.8425, 106.6132)"><i class="bi bi-pin-angle"></i> Quét Quận 12</button>
+                <button class="btn btn-success" onclick="loadUrbanPulses(10.7769, 106.7009)"><i class="bi bi-pin-angle"></i> Quét Quận 1</button>
+              </div>
+              <div id="urbanStatus" class="small text-info mt-2"></div>
+            </div>
           </div>
         </div>
-        <div id="authUser" class="hidden">
-          <p style="font-size:0.9rem;">👤 <strong id="authUserName"></strong></p>
-          <p class="hint">Uy tín: <span id="authTrust">100</span> điểm</p>
-          <button class="btn-urban" onclick="doLogout()">Đăng xuất</button>
-        </div>
-        <div id="authMsg" class="hint" style="margin-top:6px;"></div>
       </div>
 
-      <div class="card">
-        <h2>🛡️ QIWAI Shield (Xác thực AI 3 Lớp)</h2>
-        <select id="shieldType">
-          <option value="TEXT_PATTERN">Tin nhắn / Văn bản nghi vấn</option>
-          <option value="URL">Đường link (URL)</option>
-          <option value="PHONE">Số điện thoại lạ</option>
-        </select>
-        <textarea id="shieldContent" rows="3" placeholder="Dán tin nhắn, link hoặc SĐT cần kiểm tra..."></textarea>
-        <button onclick="analyzeShield()">Quét Rủi Ro Ngay</button>
-        <div id="shieldResult" class="result-box"></div>
-      </div>
-
-      <div class="card hidden" id="pulseFormCard">
-        <h2>📍 Ghim cảnh báo tại điểm đã chọn</h2>
-        <p class="hint" id="pulseCoords"></p>
-        <select id="pulseType">
-          <option value="FLOOD">Ngập nước (FLOOD)</option>
-          <option value="TRAFFIC_JAM">Kẹt xe (TRAFFIC_JAM)</option>
-          <option value="CONSTRUCTION">Công trình (CONSTRUCTION)</option>
-          <option value="SECURITY">An ninh (SECURITY)</option>
-        </select>
-        <input id="pulseDesc" type="text" placeholder="Mô tả ngắn (vd: ngập 30cm sau mưa)" maxlength="255" />
-        <button class="btn-urban" onclick="submitPulse()">Ghim lên bản đồ</button>
-        <div id="pulseMsg" class="hint"></div>
-      </div>
-
-      <div class="card">
-        <h2>🗺️ QIWAI Urban (Bản đồ Biến động)</h2>
-        <p class="hint" style="margin-bottom:10px;">Bấm trực tiếp lên bản đồ để ghim cảnh báo, hoặc quét nhanh:</p>
-        <button class="btn-urban" onclick="loadUrbanPulses(10.8425, 106.6132)">Quét Khu Vực Quận 12</button>
-        <button class="btn-urban" onclick="loadUrbanPulses(10.7769, 106.7009)">Quét Khu Vực Quận 1</button>
-        <div id="urbanStatus" style="font-size: 0.8rem; color: #38bdf8; margin-top: 5px;"></div>
+      <!-- BAN DO -->
+      <div class="col-lg-8 map-col">
+        <div id="map" class="rounded-4 border border-secondary"></div>
       </div>
     </div>
-
-    <div id="map"></div>
   </div>
 
+  <div class="toast-container position-fixed top-0 end-0 p-3" id="toastBox" style="z-index:1080"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     let authToken = localStorage.getItem('qiwai_token') || '';
@@ -116,12 +148,27 @@
       return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
+    function showToast(msg, type) {
+      type = type || 'info';
+      const el = document.createElement('div');
+      el.className = 'toast align-items-center text-bg-' + type + ' border-0';
+      el.setAttribute('role', 'alert');
+      el.innerHTML = '<div class="d-flex"><div class="toast-body">' + escapeHtml(msg) + '</div>' +
+        '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>';
+      document.getElementById('toastBox').appendChild(el);
+      const t = new bootstrap.Toast(el, { delay: 4000 });
+      t.show();
+      el.addEventListener('hidden.bs.toast', () => el.remove());
+    }
+
     map.on('click', function (e) {
       pendingPoint = { lat: e.latlng.lat, lng: e.latlng.lng };
       document.getElementById('pulseCoords').innerText =
         'Tọa độ: ' + pendingPoint.lat.toFixed(5) + ', ' + pendingPoint.lng.toFixed(5);
-      document.getElementById('pulseFormCard').classList.remove('hidden');
-      document.getElementById('pulseFormCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      const card = document.getElementById('pulseFormCard');
+      card.classList.remove('d-none');
+      card.classList.add('pulse-highlight');
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       if (pendingMarker) map.removeLayer(pendingMarker);
       pendingMarker = L.circleMarker([pendingPoint.lat, pendingPoint.lng], {
         color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: 0.5, radius: 10
@@ -135,21 +182,26 @@
     function renderAuth() {
       const guest = document.getElementById('authGuest');
       const userBox = document.getElementById('authUser');
+      const navUser = document.getElementById('navUser');
+      const navLogout = document.getElementById('navLogout');
       if (authUser && authToken) {
-        guest.classList.add('hidden');
-        userBox.classList.remove('hidden');
+        guest.classList.add('d-none');
+        userBox.classList.remove('d-none');
+        navUser.innerText = authUser.phone_or_email;
+        navLogout.classList.remove('d-none');
         document.getElementById('authUserName').innerText = authUser.phone_or_email;
         document.getElementById('authTrust').innerText = authUser.trust_score;
       } else {
-        guest.classList.remove('hidden');
-        userBox.classList.add('hidden');
+        guest.classList.remove('d-none');
+        userBox.classList.add('d-none');
+        navUser.innerText = '';
+        navLogout.classList.add('d-none');
       }
     }
 
     async function doLogin() {
       const phone_or_email = document.getElementById('authId').value.trim();
       const password = document.getElementById('authPass').value;
-      const msg = document.getElementById('authMsg');
       try {
         const res = await fetch('/api/v1/auth/login', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -160,24 +212,24 @@
           authToken = json.token; authUser = json.user;
           localStorage.setItem('qiwai_token', authToken);
           localStorage.setItem('qiwai_user', JSON.stringify(authUser));
-          msg.innerText = 'Đăng nhập thành công!';
+          showToast('Đăng nhập thành công!', 'success');
           renderAuth();
-        } else { msg.innerText = '❌ ' + (json.message || 'Đăng nhập thất bại'); }
-      } catch (e) { msg.innerText = '❌ Lỗi kết nối server.'; }
+        } else { showToast(json.message || 'Đăng nhập thất bại', 'danger'); }
+      } catch (e) { showToast('Lỗi kết nối server.', 'danger'); }
     }
 
     async function doRegister() {
       const phone_or_email = document.getElementById('authId').value.trim();
       const password = document.getElementById('authPass').value;
-      const msg = document.getElementById('authMsg');
       try {
         const res = await fetch('/api/v1/auth/register', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone_or_email, password })
         });
         const json = await res.json();
-        msg.innerText = json.success ? '✅ ' + json.message + ' — Giờ đăng nhập nhé!' : '❌ ' + (json.message || 'Đăng ký thất bại');
-      } catch (e) { msg.innerText = '❌ Lỗi kết nối server.'; }
+        showToast(json.success ? json.message + ' — Giờ đăng nhập nhé!' : (json.message || 'Đăng ký thất bại'),
+                  json.success ? 'success' : 'danger');
+      } catch (e) { showToast('Lỗi kết nối server.', 'danger'); }
     }
 
     function doLogout() {
@@ -185,16 +237,17 @@
       localStorage.removeItem('qiwai_token');
       localStorage.removeItem('qiwai_user');
       renderAuth();
+      showToast('Đã đăng xuất.', 'secondary');
     }
 
     async function submitPulse() {
       const msg = document.getElementById('pulseMsg');
       if (!pendingPoint) return;
-      if (!authToken) { msg.innerText = '❌ Vui lòng đăng nhập để ghim cảnh báo.'; return; }
+      if (!authToken) { msg.innerHTML = '<span class="text-warning">Vui lòng đăng nhập để ghim cảnh báo.</span>'; return; }
 
       const pulse_type = document.getElementById('pulseType').value;
       const description = document.getElementById('pulseDesc').value;
-      msg.innerText = '⏳ Đang ghim...';
+      msg.innerHTML = '<span class="text-info">⏳ Đang ghim...</span>';
 
       try {
         const res = await fetch('/api/v1/urban/pulses', {
@@ -206,16 +259,17 @@
         });
         const json = await res.json();
         if (json.success) {
-          msg.innerText = '✅ ' + json.message;
-          document.getElementById('pulseFormCard').classList.add('hidden');
+          msg.innerHTML = '<span class="text-success">✅ ' + escapeHtml(json.message) + '</span>';
+          showToast(json.message, 'success');
+          document.getElementById('pulseFormCard').classList.add('d-none');
           const c = map.getCenter();
           loadUrbanPulses(c.lat, c.lng);
           pendingPoint = null;
           if (pendingMarker) { map.removeLayer(pendingMarker); pendingMarker = null; }
         } else {
-          msg.innerText = '❌ ' + (json.message || 'Gửi thất bại');
+          msg.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(json.message || 'Gửi thất bại') + '</span>';
         }
-      } catch (e) { msg.innerText = '❌ Lỗi kết nối server.'; }
+      } catch (e) { msg.innerHTML = '<span class="text-danger">❌ Lỗi kết nối server.</span>'; }
     }
 
     async function analyzeShield() {
@@ -223,10 +277,10 @@
       const content = document.getElementById('shieldContent').value;
       const resultBox = document.getElementById('shieldResult');
 
-      if (!content.trim()) return alert('Vui lòng nhập nội dung cần kiểm tra!');
+      if (!content.trim()) return showToast('Vui lòng nhập nội dung cần kiểm tra!', 'warning');
 
-      resultBox.style.display = 'block';
-      resultBox.className = 'result-box';
+      resultBox.className = 'result-box show';
+      resultBox.style.cssText = 'background:#1e293b;border:1px solid #334155;color:#cbd5e1';
       resultBox.innerHTML = '⏳ Đang quét qua lõi QIWAI...';
 
       try {
@@ -240,7 +294,7 @@
         if (json.success) {
           const d = json.data;
           const safeLevel = ['SAFE','SUSPICIOUS','DANGEROUS'].includes(d.risk_level) ? d.risk_level : '';
-          resultBox.className = 'result-box ' + safeLevel;
+          resultBox.className = 'result-box show ' + safeLevel;
           resultBox.innerHTML =
             '<strong>Mức độ: ' + escapeHtml(d.risk_level) + ' (' + escapeHtml(d.risk_score) + '/100 điểm)</strong><br/>' +
             '<small>Nguồn xử lý: ' + escapeHtml(json.source) + '</small><br/><br/>' +
@@ -255,7 +309,7 @@
 
     async function loadUrbanPulses(lat, lng) {
       const statusEl = document.getElementById('urbanStatus');
-      statusEl.innerText = '⏳ Đang tải lớp phủ Geohash...';
+      statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang tải lớp phủ...';
       map.flyTo([lat, lng], 14);
 
       try {
@@ -264,10 +318,13 @@
 
         markersLayer.clearLayers();
         if (json.success) {
-          statusEl.innerText = `✅ Tìm thấy ${json.count} điểm biến động (Vùng Geohash: ${json.area_center_geohash})`;
+          statusEl.innerHTML = `<i class="bi bi-check-circle text-success"></i> ${json.count} điểm biến động (Geohash: ${escapeHtml(json.area_center_geohash)})`;
           json.data.forEach(p => {
+            const isDanger = p.pulse_type === 'SECURITY';
             const marker = L.circleMarker([p.latitude, p.longitude], {
-              color: '#ef4444', fillColor: '#f87171', fillOpacity: 0.7, radius: 12
+              color: isDanger ? '#a855f7' : '#ef4444',
+              fillColor: isDanger ? '#c084fc' : '#f87171',
+              fillOpacity: 0.7, radius: 12
             }).addTo(markersLayer);
             marker.bindPopup(
               '<b>🚨 ' + escapeHtml(p.pulse_type) + '</b><br/>' +
@@ -275,9 +332,11 @@
               '<small>Trạng thái: ' + escapeHtml(p.status) + '</small>'
             ).openPopup();
           });
+        } else {
+          statusEl.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(json.message || 'Lỗi tải dữ liệu') + '</span>';
         }
       } catch (err) {
-        statusEl.innerText = '❌ Lỗi tải dữ liệu bản đồ.';
+        statusEl.innerHTML = '<span class="text-danger">❌ Lỗi tải dữ liệu bản đồ.</span>';
       }
     }
 
