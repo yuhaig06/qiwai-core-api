@@ -111,7 +111,7 @@
               <h2 class="card-title mb-2"><i class="bi bi-map text-success"></i> QIWAI Urban</h2>
               <p class="text-muted small mb-2">Bấm trực tiếp lên bản đồ để ghim cảnh báo, hoặc quét nhanh:</p>
               <div class="d-flex flex-column gap-2">
-                <button class="btn btn-success" onclick="loadUrbanPulses(10.95, 106.95)"><i class="bi bi-pin-angle"></i> Quét toàn TP.HCM mở rộng</button>
+                <button class="btn btn-success" onclick="scanAllHCMC()"><i class="bi bi-pin-angle"></i> Quét toàn TP.HCM mở rộng</button>
                 <div class="d-flex flex-wrap gap-1 mt-2" id="districtChips"></div>
               </div>
               <div id="urbanStatus" class="small text-info mt-2"></div>
@@ -362,37 +362,53 @@
       }
     }
 
-    async function loadUrbanPulses(lat, lng) {
-      const statusEl = document.getElementById('urbanStatus');
+    function renderPulses(json, statusEl) {
+      markersLayer.clearLayers();
+      if (json.success) {
+        statusEl.innerHTML = '<i class="bi bi-check-circle text-success"></i> ' + json.count +
+          ' điểm biến động' + (json.area_center_geohash ? ' (vùng: ' + escapeHtml(json.area_center_geohash) + ')' : '');
+        json.data.forEach(p => {
+          const isDanger = p.pulse_type === 'SECURITY';
+          const marker = L.circleMarker([p.latitude, p.longitude], {
+            color: isDanger ? '#a855f7' : '#ef4444',
+            fillColor: isDanger ? '#c084fc' : '#f87171',
+            fillOpacity: 0.7, radius: 12
+          }).addTo(markersLayer);
+          marker.bindPopup(
+            '<b>🚨 ' + escapeHtml(p.pulse_type) + '</b><br/>' +
+            escapeHtml(p.description || 'Cảnh báo đô thị') + '<br/>' +
+            '<small>Trạng thái: ' + escapeHtml(p.status) + '</small>'
+          ).openPopup();
+        });
+      } else {
+        statusEl.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(json.message || 'Lỗi tải dữ liệu') + '</span>';
+      }
+    }
+
+    async function fetchPulses(url, statusEl, fly) {
       statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang tải lớp phủ...';
-      map.flyTo([lat, lng], 14);
-
+      if (fly) fly();
       try {
-        const res = await fetch(`/api/v1/urban/pulses?lat=${lat}&lng=${lng}`);
+        const res = await fetch(url);
         const json = await res.json();
-
-        markersLayer.clearLayers();
-        if (json.success) {
-          statusEl.innerHTML = `<i class="bi bi-check-circle text-success"></i> ${json.count} điểm biến động (Geohash: ${escapeHtml(json.area_center_geohash)})`;
-          json.data.forEach(p => {
-            const isDanger = p.pulse_type === 'SECURITY';
-            const marker = L.circleMarker([p.latitude, p.longitude], {
-              color: isDanger ? '#a855f7' : '#ef4444',
-              fillColor: isDanger ? '#c084fc' : '#f87171',
-              fillOpacity: 0.7, radius: 12
-            }).addTo(markersLayer);
-            marker.bindPopup(
-              '<b>🚨 ' + escapeHtml(p.pulse_type) + '</b><br/>' +
-              escapeHtml(p.description || 'Cảnh báo đô thị') + '<br/>' +
-              '<small>Trạng thái: ' + escapeHtml(p.status) + '</small>'
-            ).openPopup();
-          });
-        } else {
-          statusEl.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(json.message || 'Lỗi tải dữ liệu') + '</span>';
-        }
+        renderPulses(json, statusEl);
       } catch (err) {
         statusEl.innerHTML = '<span class="text-danger">❌ Lỗi tải dữ liệu bản đồ.</span>';
       }
+    }
+
+    // Quet theo tam diem (geohash ~vung lan can)
+    function loadUrbanPulses(lat, lng) {
+      const statusEl = document.getElementById('urbanStatus');
+      fetchPulses('/api/v1/urban/pulses?lat=' + lat + '&lng=' + lng, statusEl,
+        () => map.flyTo([lat, lng], 13));
+    }
+
+    // Quet TOAN BO vung TP.HCM mo rong bang bounding box
+    function scanAllHCMC() {
+      const statusEl = document.getElementById('urbanStatus');
+      fetchPulses('/api/v1/urban/pulses?bbox=10.30,106.30,11.55,107.65', statusEl,
+        () => map.flyToBounds([[10.30, 106.30], [11.55, 107.65]], { padding: [30, 30] }));
     }
 
     if ('serviceWorker' in navigator) {
@@ -423,7 +439,7 @@
     });
 
     renderAuth();
-    loadUrbanPulses(10.95, 106.95);
+    scanAllHCMC();
   </script>
 </body>
 </html>

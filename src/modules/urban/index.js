@@ -100,6 +100,27 @@ router.post('/pulses', verifyToken, async (req, res) => {
 // 2. Truy vấn các điểm biến động quanh vị trí người dùng: GET /api/v1/urban/pulses?lat=...&lng=...
 router.get('/pulses', async (req, res) => {
   try {
+    // Che do bbox: quet toan bo vung chu nhat (dung cho "Quet toan TP.HCM")
+    const bbox = req.query.bbox;
+    if (bbox) {
+      const parts = String(bbox).split(',').map(Number);
+      if (parts.length !== 4 || parts.some(isNaN)) {
+        return res.status(400).json({ success: false, message: 'bbox khong hop le. Dung dinh dang: minLat,minLng,maxLat,maxLng' });
+      }
+      const [minLat, minLng, maxLat, maxLng] = parts;
+      const [pulses] = await db.execute(
+        `SELECT id, pulse_type, latitude, longitude, geohash, description, status, expires_at, created_at
+         FROM urban_pulses
+         WHERE latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?
+           AND status != 'EXPIRED' AND expires_at > NOW()
+         ORDER BY created_at DESC
+         LIMIT 500`,
+        [minLat, maxLat, minLng, maxLng]
+      );
+      const payload = { success: true, area_center_geohash: 'BBOX', count: pulses.length, data: pulses };
+      return res.json(payload);
+    }
+
     const lat = parseFloat(req.query.lat);
     const lng = parseFloat(req.query.lng);
 
