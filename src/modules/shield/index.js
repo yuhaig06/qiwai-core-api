@@ -150,7 +150,7 @@ router.post('/analyze', aiLimiter, async (req, res) => {
     const aiResult = await analyzeRiskWithAI(type, cleanContent);
 
     if (aiResult) {
-      const fullAnalysis = `${aiResult.reason} Khuyến nghị: ${aiResult.action_advice}`;
+      const fullAnalysis = `${aiResult.reason} ${aiResult.action_advice}`;
 
       if (!noStore) {
         if (staleRecord) {
