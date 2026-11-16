@@ -267,6 +267,12 @@
     };
 
     map.on('click', function (e) {
+      if (manualPickMode) {
+        manualPickMode = false;
+        clearTimeout(manualPickTimer);
+        placeMeMarker(e.lngLat.lat, e.lngLat.lng, ' (chọn thủ công)');
+        return;
+      }
       pendingPoint = { lat: e.lngLat.lat, lng: e.lngLat.lng };
       document.getElementById('pulseCoords').innerText =
         'Tọa độ: ' + pendingPoint.lat.toFixed(5) + ', ' + pendingPoint.lng.toFixed(5);
@@ -508,8 +514,32 @@
     // Quet toan vung TP.HCM mo rong qua bbox (khong phu thuoc 1 diem geohash)
     let meMarker = null;
     let meLabel = null;
+    let manualPickMode = false;
+    let manualPickTimer = null;
 
-    // Dinh vi vi tri hien tai: bay toi cho + ghim cham xanh + doan khu vuc gan nhat
+    // Dat cham xanh "vi tri cua toi" + doan khu vuc gan nhat (dung chung GPS & click tay)
+    function placeMeMarker(lat, lng, acc) {
+      acc = acc || '';
+      const statusEl = document.getElementById('urbanStatus');
+      map.flyTo({ center: [lng, lat], zoom: 15 }, { duration: 1200 });
+      if (meMarker) meMarker.remove();
+      const el = document.createElement('div');
+      el.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#0ea5e9;border:3px solid #fff;box-shadow:0 0 10px #0ea5e9;';
+      meMarker = new maplibregl.Marker({ element: el })
+        .setLngLat([lng, lat]).addTo(map);
+
+      let nearest = 'khu vực không rõ';
+      let best = Infinity;
+      DISTRICTS.forEach(d => {
+        const dist = Math.hypot((d[1]-lat)*111, (d[2]-lng)*111*Math.cos(lat*Math.PI/180));
+        if (dist < best) { best = dist; nearest = d[0]; }
+      });
+      statusEl.innerHTML = '<i class="bi bi-geo-alt-fill text-primary"></i> Bạn đang ở khoảng <strong>' + escapeHtml(nearest) + '</strong>' + acc +
+        ' — <a href="#" onclick="loadUrbanPulses(' + lat.toFixed(5) + ',' + lng.toFixed(5) + ');return false;">quét quanh đây</a>';
+      showToast('Đã định vị: ' + nearest + acc, 'success');
+    }
+
+    // Dinh vi vi tri hien tai: GPS chay nen + cho phep bam chon thu cong tren ban do
     function locateMe() {
       const statusEl = document.getElementById('urbanStatus');
       showToast('Đang xin quyền vị trí GPS...', 'info');
@@ -525,7 +555,11 @@
           statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang lấy vị trí GPS... (quyền: ' + p.state + ')';
         }).catch(() => {});
       }
-      statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang lấy vị trí GPS...';
+      statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang lấy vị trí GPS... <span class="text-muted">(hoặc bấm vào bản đồ để chọn vị trí thủ công)</span>';
+      // Mo che do chon vi tri bang click trong 60s — laptop dinh vi cham van dung duoc ngay
+      manualPickMode = true;
+      clearTimeout(manualPickTimer);
+      manualPickTimer = setTimeout(() => { manualPickMode = false; }, 60000);
       const isMobileDev = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
       let gpsRetries = 0;
       function tryGetPosition() {
@@ -534,25 +568,8 @@
           const lat = pos.coords.latitude, lng = pos.coords.longitude;
           const acc = pos.coords.accuracy ? ' (±' + Math.round(pos.coords.accuracy) + 'm)' : '';
           console.log('[QIWAI GPS] fix:', lat, lng, 'acc:', pos.coords.accuracy, 'speed:', pos.coords.speed);
-          map.flyTo({ center: [lng, lat], zoom: 15 }, { duration: 1200 });
-
-          // Cham xanh "vi tri cua toi"
-          if (meMarker) meMarker.remove();
-          const el = document.createElement('div');
-          el.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#0ea5e9;border:3px solid #fff;box-shadow:0 0 10px #0ea5e9;';
-          meMarker = new maplibregl.Marker({ element: el })
-            .setLngLat([lng, lat]).addTo(map);
-
-          // Doan ten khu vuc gan nhat tu danh sach chip
-          let nearest = 'khu vực không rõ';
-          let best = Infinity;
-          DISTRICTS.forEach(d => {
-            const dist = Math.hypot((d[1]-lat)*111, (d[2]-lng)*111*Math.cos(lat*Math.PI/180));
-            if (dist < best) { best = dist; nearest = d[0]; }
-          });
-          statusEl.innerHTML = '<i class="bi bi-geo-alt-fill text-primary"></i> Bạn đang ở khoảng <strong>' + escapeHtml(nearest) + '</strong>' + acc +
-            ' — <a href="#" onclick="loadUrbanPulses(' + lat.toFixed(5) + ',' + lng.toFixed(5) + ');return false;">quét quanh đây</a>';
-          showToast('Đã định vị: ' + nearest + acc, 'success');
+          manualPickMode = false;
+          placeMeMarker(lat, lng, acc);
         },
         err => {
           // Timeout lan 1 -> tu retry 1 lan nua (Windows dinh vi lan dau co the mat 30-60s)
@@ -567,7 +584,8 @@
             2: 'Không bắt được tín hiệu GPS — ra ngoài trời thoáng hoặc bật Location trên máy.',
             3: 'Hết thời gian chờ GPS — thử lại nhé.'
           };
-          statusEl.innerHTML = '<span class="text-danger">❌ ' + (msgs[err.code] || err.message) + '</span>';
+          manualPickMode = false;
+          statusEl.innerHTML = '<span class="text-danger">❌ ' + (msgs[err.code] || err.message) + ' — bấm "Vị trí của tôi" rồi click bản đồ để chọn thủ công.</span>';
           showToast(msgs[err.code] || 'Không lấy được GPS', 'danger');
         },
         {
