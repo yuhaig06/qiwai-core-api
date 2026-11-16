@@ -512,8 +512,10 @@
     // Dinh vi vi tri hien tai: bay toi cho + ghim cham xanh + doan khu vuc gan nhat
     function locateMe() {
       const statusEl = document.getElementById('urbanStatus');
+      showToast('Đang xin quyền vị trí GPS...', 'info');
       if (!window.isSecureContext || !navigator.geolocation) {
-        statusEl.innerHTML = '<span class="text-warning">⚠️ Trình duyệt chỉ cho định vị trên HTTPS — mở link tunnel/Render nhé.</span>';
+        statusEl.innerHTML = '<span class="text-warning">⚠️ Trình duyệt chỉ cho định vị trên HTTPS.</span>';
+        showToast('GPS chỉ hoạt động trên HTTPS — hãy mở link trycloudflare hoặc chờ deploy Render.', 'warning');
         return;
       }
       statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang lấy vị trí GPS...';
@@ -542,7 +544,13 @@
           showToast('Đã định vị: ' + nearest + acc, 'success');
         },
         err => {
-          statusEl.innerHTML = '<span class="text-danger">❌ Không lấy được GPS (' + (err.message || 'từ chối quyền') + ').</span>';
+          const msgs = {
+            1: 'Bạn đã từ chối quyền vị trí — bấm icon ổ khóa trên thanh địa chỉ để bật lại.',
+            2: 'Không bắt được tín hiệu GPS — ra ngoài trời thoáng hoặc bật Location trên máy.',
+            3: 'Hết thời gian chờ GPS — thử lại nhé.'
+          };
+          statusEl.innerHTML = '<span class="text-danger">❌ ' + (msgs[err.code] || err.message) + '</span>';
+          showToast(msgs[err.code] || 'Không lấy được GPS', 'danger');
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
