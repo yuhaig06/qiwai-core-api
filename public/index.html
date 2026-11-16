@@ -421,7 +421,7 @@
         return;
       }
       statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang quét toàn TP.HCM...';
-      map.flyToBounds(hcmcBounds, { padding: 40, duration: 1200 });
+      map.fitBounds(hcmcBounds, { padding: 40, duration: 1200, maxZoom: 11.5 });
 
       try {
         const res = await fetch('/api/v1/urban/pulses?bbox=10.30,106.30,11.55,107.65', {
