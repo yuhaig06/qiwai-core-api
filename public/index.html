@@ -127,6 +127,7 @@
               <h2 class="card-title mb-2"><i class="bi bi-map text-success"></i> QIWAI Urban</h2>
               <p class="text-muted small mb-2">Bấm trực tiếp lên bản đồ để ghim cảnh báo, hoặc quét nhanh:</p>
               <div class="d-flex flex-column gap-2">
+                <button class="btn btn-primary" onclick="locateMe()"><i class="bi bi-geo-alt-fill"></i> Vị trí của tôi</button>
                 <button class="btn btn-success" onclick="scanAllHCMC()"><i class="bi bi-pin-angle"></i> Quét TP.HCM</button>
                 <div class="d-flex gap-1">
                   <button class="btn btn-sm btn-outline-success flex-fill" onclick="scanHanoi()"><i class="bi bi-pin-angle"></i> Hà Nội</button>
@@ -505,6 +506,48 @@
     }
 
     // Quet toan vung TP.HCM mo rong qua bbox (khong phu thuoc 1 diem geohash)
+    let meMarker = null;
+    let meLabel = null;
+
+    // Dinh vi vi tri hien tai: bay toi cho + ghim cham xanh + doan khu vuc gan nhat
+    function locateMe() {
+      const statusEl = document.getElementById('urbanStatus');
+      if (!window.isSecureContext || !navigator.geolocation) {
+        statusEl.innerHTML = '<span class="text-warning">⚠️ Trình duyệt chỉ cho định vị trên HTTPS — mở link tunnel/Render nhé.</span>';
+        return;
+      }
+      statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang lấy vị trí GPS...';
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          const lat = pos.coords.latitude, lng = pos.coords.longitude;
+          const acc = pos.coords.accuracy ? ' (±' + Math.round(pos.coords.accuracy) + 'm)' : '';
+          map.flyTo({ center: [lng, lat], zoom: 15 }, { duration: 1200 });
+
+          // Cham xanh "vi tri cua toi"
+          if (meMarker) meMarker.remove();
+          const el = document.createElement('div');
+          el.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#0ea5e9;border:3px solid #fff;box-shadow:0 0 10px #0ea5e9;';
+          meMarker = new maplibregl.Marker({ element: el })
+            .setLngLat([lng, lat]).addTo(map);
+
+          // Doan ten khu vuc gan nhat tu danh sach chip
+          let nearest = 'khu vực không rõ';
+          let best = Infinity;
+          DISTRICTS.forEach(d => {
+            const dist = Math.hypot((d[1]-lat)*111, (d[2]-lng)*111*Math.cos(lat*Math.PI/180));
+            if (dist < best) { best = dist; nearest = d[0]; }
+          });
+          statusEl.innerHTML = '<i class="bi bi-geo-alt-fill text-primary"></i> Bạn đang ở khoảng <strong>' + escapeHtml(nearest) + '</strong>' + acc +
+            ' — <a href="#" onclick="loadUrbanPulses(' + lat.toFixed(5) + ',' + lng.toFixed(5) + ');return false;">quét quanh đây</a>';
+          showToast('Đã định vị: ' + nearest + acc, 'success');
+        },
+        err => {
+          statusEl.innerHTML = '<span class="text-danger">❌ Không lấy được GPS (' + (err.message || 'từ chối quyền') + ').</span>';
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
+
     // Quet theo bbox bat ky: label = ten vung, bbox = "minLat,minLng,maxLat,maxLng", fly = bounds [lng,lat]
     async function scanBBox(label, bbox, fly, maxZoom) {
       const statusEl = document.getElementById('urbanStatus');
