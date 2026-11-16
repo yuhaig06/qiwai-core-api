@@ -4,7 +4,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const ACTIVE_MODEL = 'gemini-3.5-flash-lite';
 
 async function analyzeRiskWithAI(type, content) {
-  const prompt = `Bạn là hệ thống phân tích rủi ro lừa đảo tại Việt Nam. Phân tích dữ liệu [${type}]: "${content}".
+  const prompt = `Bạn là hệ thống phân tích rủi ro lừa đảo quốc tế. Tự động nhận diện ngôn ngữ của nội dung đầu vào (tiếng Việt, Anh, Nhật, Hàn, Trung, Pháp...) và viết "reason" + "action_advice" bằng CHÍNH ngôn ngữ đó. Các key JSON giữ nguyên tiếng Anh. Phân tích dữ liệu [${type}]: "${content}".
 
 QUY TẮC ĐÁNH GIÁ CHUẨN:
 - PHONE: SĐT di động VN hợp lệ (10 số, bắt đầu 03/05/07/08/09, hoặc 11 số 10x/14x/16x/18x/19x) mà KHÔNG kèm dấu hiệu lừa đảo nào -> risk_level "SAFE", risk_score 10-25. Chỉ nâng SUSPICIOUS/DANGEROUS khi có pattern xấu: đầu số quốc tế lạ (+224/+252/+375/+371/+381/+881/+882...), số quá ngắn/dài bất thường, hoặc nội dung đi kèm đe dọa/giả mạo.

@@ -119,8 +119,15 @@ router.post('/analyze', aiLimiter, async (req, res) => {
       [type, cleanContent.slice(0, 500)]
     );
 
+    const CACHE_TTL_MS = 72 * 60 * 60 * 1000; // Cache AI 72h — het han thi phan tich lai
+    let staleRecord = null;
+
     if (existingRows.length > 0) {
       const record = existingRows[0];
+      const ageMs = Date.now() - new Date(record.updated_at).getTime();
+      if (ageMs >= CACHE_TTL_MS) {
+        staleRecord = record; // Cache cu -> cho phep Gemini cap nhat lai
+      } else {
       await db.execute('UPDATE risk_entities SET report_count = report_count + 1 WHERE id = ?', [record.id]);
 
       return res.json({
@@ -136,6 +143,7 @@ router.post('/analyze', aiLimiter, async (req, res) => {
           report_count: record.report_count + 1,
         },
       });
+      }
     }
 
     // LỚP 3: Gọi Gemini 3.5 Flash-Lite Free Tier
@@ -145,11 +153,18 @@ router.post('/analyze', aiLimiter, async (req, res) => {
       const fullAnalysis = `${aiResult.reason} Khuyến nghị: ${aiResult.action_advice}`;
 
       if (!noStore) {
-        await db.execute(
-          `INSERT INTO risk_entities (entity_type, entity_value, risk_level, risk_score, ai_analysis, report_count)
-           VALUES (?, ?, ?, ?, ?, 1)`,
-          [type, cleanContent.slice(0, 500), aiResult.risk_level, aiResult.risk_score, fullAnalysis]
-        );
+        if (staleRecord) {
+          await db.execute(
+            'UPDATE risk_entities SET risk_level = ?, risk_score = ?, ai_analysis = ?, report_count = report_count + 1 WHERE id = ?',
+            [aiResult.risk_level, aiResult.risk_score, fullAnalysis, staleRecord.id]
+          );
+        } else {
+          await db.execute(
+            `INSERT INTO risk_entities (entity_type, entity_value, risk_level, risk_score, ai_analysis, report_count)
+             VALUES (?, ?, ?, ?, ?, 1)`,
+            [type, cleanContent.slice(0, 500), aiResult.risk_level, aiResult.risk_score, fullAnalysis]
+          );
+        }
       }
 
       return res.json({
