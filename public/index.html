@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#0f172a" />
   <title>QIWAI — An Ninh & Đô Thị Thông Minh</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
   <style>
     body { background: #0b1120; min-height: 100vh; }
@@ -18,6 +18,16 @@
     .panel-col { height: 100%; overflow-y: auto; }
     .map-col { height: 100%; position: relative; }
     #map { position: absolute; inset: 0; }
+    .map-lock {
+      position: absolute; inset: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(11,17,32,.72); backdrop-filter: blur(3px);
+      border-radius: 1rem; cursor: pointer;
+    }
+    .map-lock .lock-box {
+      background: #111a2e; border: 1px solid #334155; border-radius: 14px;
+      padding: 1.25rem 1.75rem; text-align: center; color: #cbd5e1;
+    }
     .qiwai-card { background: #111a2e; border: 1px solid #1e293b; border-radius: 14px; }
     .qiwai-card .card-title { font-size: .95rem; font-weight: 600; }
     .result-box { border-radius: 10px; font-size: .85rem; line-height: 1.45; display: none; }
@@ -26,7 +36,7 @@
     .SUSPICIOUS { background: rgba(245,158,11,.15); border: 1px solid #f59e0b; color: #fcd34d; }
     .SAFE { background: rgba(16,185,129,.15); border: 1px solid #10b981; color: #6ee7b7; }
     .pulse-highlight { border-color: #38bdf8 !important; box-shadow: 0 0 0 1px #38bdf8; }
-    .leaflet-popup-content { color: #0f172a; }
+    .maplibregl-popup-content { color: #0f172a; border-radius: 10px; }
     @media (max-width: 991.98px) {
       .qiwai-shell { height: auto; }
       .map-col { height: 60vh; min-height: 320px; }
@@ -111,7 +121,7 @@
               <h2 class="card-title mb-2"><i class="bi bi-map text-success"></i> QIWAI Urban</h2>
               <p class="text-muted small mb-2">Bấm trực tiếp lên bản đồ để ghim cảnh báo, hoặc quét nhanh:</p>
               <div class="d-flex flex-column gap-2">
-                <button class="btn btn-success" onclick="loadUrbanPulses(10.95, 106.95)"><i class="bi bi-pin-angle"></i> Quét toàn TP.HCM mở rộng</button>
+                <button class="btn btn-success" onclick="scanAllHCMC()"><i class="bi bi-pin-angle"></i> Quét toàn TP.HCM mở rộng</button>
                 <div class="d-flex flex-wrap gap-1 mt-2" id="districtChips"></div>
               </div>
               <div id="urbanStatus" class="small text-info mt-2"></div>
@@ -123,6 +133,13 @@
       <!-- BAN DO -->
       <div class="col-lg-8 map-col">
         <div id="map" class="rounded-4 border border-secondary"></div>
+        <div id="mapLock" class="map-lock">
+          <div class="lock-box">
+            <i class="bi bi-lock-fill fs-2 text-info"></i>
+            <div class="fw-bold mt-2">Đăng nhập để xem bản đồ</div>
+            <div class="small text-muted">Dữ liệu QIWAI Urban chỉ mở sau khi xác thực tài khoản.</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -130,74 +147,69 @@
   <div class="toast-container position-fixed top-0 end-0 p-3" id="toastBox" style="z-index:1080"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script>
     let authToken = localStorage.getItem('qiwai_token') || '';
     let authUser = JSON.parse(localStorage.getItem('qiwai_user') || 'null');
     let pendingPoint = null;
+    let pulseMarkers = [];
+    let pendingMarker = null;
 
     // Khoa khung nhin TP.HCM mo rong 2026 (gom Binh Duong + Ba Ria - Vung Tau)
+    // MapLibre dung thu tu [lng, lat]
     const hcmcBounds = [
-      [10.30, 106.30], // Canh Tay Nam (Vung Tau / Can Gio)
-      [11.55, 107.65]  // Canh Dong Bac (Dau Tieng / Xuyen Moc)
+      [106.30, 10.30], // Canh Tay Nam (Vung Tau / Can Gio)
+      [107.65, 11.55]  // Canh Dong Bac (Dau Tieng / Xuyen Moc)
     ];
 
-    const map = L.map('map', {
-      center: [10.95, 106.95],
+    const map = new maplibregl.Map({
+      container: 'map',
+      style: 'https://tiles.openfreemap.org/styles/liberty',
+      center: [106.95, 10.95],
       zoom: 11,
       minZoom: 9,
+      maxZoom: 19,
+      pitch: 50,
       maxBounds: hcmcBounds,
-      maxBoundsViscosity: 0.8
+      attributionControl: { compact: true }
     });
 
-    // Tile providers theo chuoi du phong: CARTO dark -> OSM -> Esri
-    // CARTO mien phi, than thien Leaflet, phu song toan cau (gan giong Google Maps)
-    const tileProviders = [
-      {
-        name: 'Esri World Street',
-        layer: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-          attribution: 'Tiles &copy; Esri | QIWAI Urban Layer',
-          maxZoom: 19
-        })
-      },
-      {
-        name: 'OpenStreetMap',
-        layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; OpenStreetMap | QIWAI Urban Layer',
-          maxZoom: 19
-        })
-      },
-      {
-        name: 'Esri World Imagery',
-        layer: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-          attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics | QIWAI Urban Layer',
-          maxZoom: 19
-        })
-      }
-    ];
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
 
-    let providerIndex = 0;
-    function activateProvider(i) {
-      tileProviders.forEach((p, idx) => {
-        if (map.hasLayer(p.layer)) map.removeLayer(p.layer);
-      });
-      tileProviders[i].layer.addTo(map);
-      if (i > 0) showToast('Tile provider bi chan — da chuyen sang ' + tileProviders[i].name, 'warning');
+    // GPS thuc te: chi tren HTTPS/localhost (chuan bao mat trinh duyet)
+    if (window.isSecureContext && navigator.geolocation) {
+      map.addControl(new maplibregl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+        showUserHeading: true
+      }), 'top-right');
     }
 
-    tileProviders.forEach((p, i) => {
-      p.layer.on('tileerror', function () {
-        // Neu provider hien tai loi va con provider du phong -> chuyen tiep
-        if (i === providerIndex && providerIndex < tileProviders.length - 1) {
-          providerIndex++;
-          activateProvider(providerIndex);
-        }
-      });
+    // Style liberty tham chieu mot so icon POI chua co trong sprite -> cap pixel trong suot
+    map.on('styleimagemissing', function (e) {
+      if (!e.id || map.hasImage(e.id)) return;
+      map.addImage(e.id, new ImageData(1, 1), { pixelRatio: 1 });
     });
-    activateProvider(0);
 
-    let markersLayer = L.layerGroup().addTo(map);
-    let pendingMarker = null;
+    // Khoi nha 3D khi zoom sau
+    map.on('load', function () {
+      if (!map.getSource('openmaptiles')) return;
+      const layers = map.getStyle().layers || [];
+      const labelLayer = layers.find(l => l.type === 'symbol' && l.layout && l.layout['text-field']);
+      map.addLayer({
+        id: 'qiwai-3d-buildings',
+        source: 'openmaptiles',
+        'source-layer': 'building',
+        type: 'fill-extrusion',
+        minzoom: 14,
+        paint: {
+          'fill-extrusion-color': '#cbd5e1',
+          'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 10],
+          'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
+          'fill-extrusion-opacity': 0.75
+        }
+      }, labelLayer ? labelLayer.id : undefined);
+    });
 
     function escapeHtml(str) {
       return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -216,22 +228,30 @@
       el.addEventListener('hidden.bs.toast', () => el.remove());
     }
 
+    const PULSE_COLORS = {
+      FLOOD: '#38bdf8', TRAFFIC_JAM: '#f59e0b', CONSTRUCTION: '#eab308', SECURITY: '#a855f7'
+    };
+
     map.on('click', function (e) {
-      pendingPoint = { lat: e.latlng.lat, lng: e.latlng.lng };
+      pendingPoint = { lat: e.lngLat.lat, lng: e.lngLat.lng };
       document.getElementById('pulseCoords').innerText =
         'Tọa độ: ' + pendingPoint.lat.toFixed(5) + ', ' + pendingPoint.lng.toFixed(5);
       const card = document.getElementById('pulseFormCard');
       card.classList.remove('d-none');
       card.classList.add('pulse-highlight');
       card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      if (pendingMarker) map.removeLayer(pendingMarker);
-      pendingMarker = L.circleMarker([pendingPoint.lat, pendingPoint.lng], {
-        color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: 0.5, radius: 10
-      }).addTo(map);
+      if (pendingMarker) pendingMarker.remove();
+      pendingMarker = new maplibregl.Marker({ color: '#38bdf8' })
+        .setLngLat([pendingPoint.lng, pendingPoint.lat])
+        .addTo(map);
     });
 
     function authHeaders() {
       return authToken ? { 'Authorization': 'Bearer ' + authToken } : {};
+    }
+
+    function updateMapLock() {
+      document.getElementById('mapLock').style.display = (authUser && authToken) ? 'none' : 'flex';
     }
 
     function renderAuth() {
@@ -246,17 +266,23 @@
         navLogout.classList.remove('d-none');
         document.getElementById('authUserName').innerText = authUser.phone_or_email;
         document.getElementById('authTrust').innerText = authUser.trust_score;
+        updateMapLock();
       } else {
         guest.classList.remove('d-none');
         userBox.classList.add('d-none');
         navUser.innerText = '';
         navLogout.classList.add('d-none');
+        updateMapLock();
+        clearPulses();
+        document.getElementById('urbanStatus').innerHTML = '<span class="text-muted">Đăng nhập để xem dữ liệu.</span>';
       }
     }
 
     async function doLogin() {
       const phone_or_email = document.getElementById('authId').value.trim();
       const password = document.getElementById('authPass').value;
+      if (!phone_or_email) return showToast('Vui lòng nhập SĐT hoặc Email.', 'warning');
+      if (password.length < 6) return showToast('Mật khẩu phải có ít nhất 6 ký tự.', 'warning');
       try {
         const res = await fetch('/api/v1/auth/login', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -269,6 +295,7 @@
           localStorage.setItem('qiwai_user', JSON.stringify(authUser));
           showToast('Đăng nhập thành công!', 'success');
           renderAuth();
+          scanAllHCMC();
         } else { showToast(json.message || 'Đăng nhập thất bại', 'danger'); }
       } catch (e) { showToast('Lỗi kết nối server.', 'danger'); }
     }
@@ -276,6 +303,8 @@
     async function doRegister() {
       const phone_or_email = document.getElementById('authId').value.trim();
       const password = document.getElementById('authPass').value;
+      if (!phone_or_email) return showToast('Vui lòng nhập SĐT hoặc Email.', 'warning');
+      if (password.length < 6) return showToast('Mật khẩu phải có ít nhất 6 ký tự.', 'warning');
       try {
         const res = await fetch('/api/v1/auth/register', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -320,7 +349,7 @@
           const c = map.getCenter();
           loadUrbanPulses(c.lat, c.lng);
           pendingPoint = null;
-          if (pendingMarker) { map.removeLayer(pendingMarker); pendingMarker = null; }
+          if (pendingMarker) { pendingMarker.remove(); pendingMarker = null; }
         } else {
           msg.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(json.message || 'Gửi thất bại') + '</span>';
         }
@@ -362,31 +391,72 @@
       }
     }
 
-    async function loadUrbanPulses(lat, lng) {
+    function clearPulses() {
+      pulseMarkers.forEach(m => m.remove());
+      pulseMarkers = [];
+    }
+
+    function renderPulses(data) {
+      clearPulses();
+      data.forEach(p => {
+        const color = PULSE_COLORS[p.pulse_type] || '#ef4444';
+        const marker = new maplibregl.Marker({ color })
+          .setLngLat([Number(p.longitude), Number(p.latitude)])
+          .setPopup(new maplibregl.Popup({ offset: 18 }).setHTML(
+            '<b>' + escapeHtml(p.pulse_type) + '</b><br/>' +
+            escapeHtml(p.description || 'Cảnh báo đô thị') + '<br/>' +
+            '<small>Trạng thái: ' + escapeHtml(p.status) + '</small>'
+          ))
+          .addTo(map);
+        pulseMarkers.push(marker);
+      });
+    }
+
+    // Quet toan vung TP.HCM mo rong qua bbox (khong phu thuoc 1 diem geohash)
+    async function scanAllHCMC() {
       const statusEl = document.getElementById('urbanStatus');
-      statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang tải lớp phủ...';
-      map.flyTo([lat, lng], 14);
+      if (!authToken) {
+        statusEl.innerHTML = '<span class="text-muted">Đăng nhập để xem dữ liệu.</span>';
+        updateMapLock();
+        return;
+      }
+      statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang quét toàn TP.HCM...';
+      map.flyToBounds(hcmcBounds, { padding: 40, duration: 1200 });
 
       try {
-        const res = await fetch(`/api/v1/urban/pulses?lat=${lat}&lng=${lng}`);
+        const res = await fetch('/api/v1/urban/pulses?bbox=10.30,106.30,11.55,107.65', {
+          headers: authHeaders()
+        });
         const json = await res.json();
-
-        markersLayer.clearLayers();
         if (json.success) {
-          statusEl.innerHTML = `<i class="bi bi-check-circle text-success"></i> ${json.count} điểm biến động (Geohash: ${escapeHtml(json.area_center_geohash)})`;
-          json.data.forEach(p => {
-            const isDanger = p.pulse_type === 'SECURITY';
-            const marker = L.circleMarker([p.latitude, p.longitude], {
-              color: isDanger ? '#a855f7' : '#ef4444',
-              fillColor: isDanger ? '#c084fc' : '#f87171',
-              fillOpacity: 0.7, radius: 12
-            }).addTo(markersLayer);
-            marker.bindPopup(
-              '<b>🚨 ' + escapeHtml(p.pulse_type) + '</b><br/>' +
-              escapeHtml(p.description || 'Cảnh báo đô thị') + '<br/>' +
-              '<small>Trạng thái: ' + escapeHtml(p.status) + '</small>'
-            ).openPopup();
-          });
+          renderPulses(json.data);
+          statusEl.innerHTML = '<i class="bi bi-check-circle text-success"></i> ' + json.count + ' điểm biến động (toàn TP.HCM mở rộng)';
+        } else {
+          statusEl.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(json.message || 'Lỗi tải dữ liệu') + '</span>';
+        }
+      } catch (err) {
+        statusEl.innerHTML = '<span class="text-danger">❌ Lỗi tải dữ liệu bản đồ.</span>';
+      }
+    }
+
+    async function loadUrbanPulses(lat, lng) {
+      const statusEl = document.getElementById('urbanStatus');
+      if (!authToken) {
+        statusEl.innerHTML = '<span class="text-muted">Đăng nhập để xem dữ liệu.</span>';
+        updateMapLock();
+        return;
+      }
+      statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang tải lớp phủ...';
+      map.flyTo({ center: [lng, lat], zoom: 13 }, { duration: 1000 });
+
+      try {
+        const res = await fetch(`/api/v1/urban/pulses?lat=${lat}&lng=${lng}`, {
+          headers: authHeaders()
+        });
+        const json = await res.json();
+        if (json.success) {
+          renderPulses(json.data);
+          statusEl.innerHTML = '<i class="bi bi-check-circle text-success"></i> ' + json.count + ' điểm biến động (vùng: ' + escapeHtml(json.area_center_geohash || 'GPS') + ')';
         } else {
           statusEl.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(json.message || 'Lỗi tải dữ liệu') + '</span>';
         }
@@ -401,7 +471,7 @@
       });
     }
 
-    // Chips quet nhanh toan TP.HCM
+    // Chips quet nhanh cac khu vuc TP.HCM mo rong
     const DISTRICTS = [
       ['Trung tâm', 10.7769, 106.7009], ['Thủ Đức', 10.8500, 106.7700],
       ['Bình Dương', 10.9800, 106.7200], ['Thuận An', 10.9100, 106.7600],
@@ -423,7 +493,7 @@
     });
 
     renderAuth();
-    loadUrbanPulses(10.95, 106.95);
+    if (authUser && authToken) scanAllHCMC();
   </script>
 </body>
 </html>
