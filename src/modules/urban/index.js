@@ -3,6 +3,7 @@ const router = express.Router();
 const geohash = require('ngeohash');
 const db = require('../../core/database/db');
 const { verifyToken } = require('../../core/middlewares/auth');
+const { validatePulsePhoto } = require('../../core/ai-engine');
 
 // Cấu hình vòng đời mặc định (tính bằng giờ) cho từng loại biến động đô thị
 const PULSE_TTL_HOURS = {
@@ -10,6 +11,7 @@ const PULSE_TTL_HOURS = {
   FLOOD: 3,          // Ngập nước tự hết hạn sau 3 giờ
   SECURITY: 6,       // Cảnh báo an ninh tự hết hạn sau 6 giờ
   CONSTRUCTION: 168, // Công trình rào đường tự hết hạn sau 7 ngày (168 giờ)
+  ALL_CLEAR: 24,     // Tin hieu 'da thong thoang' luu 24h de audit
 };
 
 // In-memory cache 15s cho truy vấn bản đồ: 500 user cung vung chi ton 1 query MySQL
@@ -19,7 +21,7 @@ const CACHE_TTL_MS = 15 * 1000;
 // 1. Gửi cảnh báo biến động đô thị mới: POST /api/v1/urban/pulses (Yêu cầu JWT)
 router.post('/pulses', verifyToken, async (req, res) => {
   try {
-    const { pulse_type, latitude, longitude, description } = req.body;
+    const { pulse_type, latitude, longitude, description, speed, accuracy, photo, photo_timestamp } = req.body;
     const validTypes = Object.keys(PULSE_TTL_HOURS);
 
     // Validate tọa độ thực tế & loại sự cố
@@ -37,9 +39,33 @@ router.post('/pulses', verifyToken, async (req, res) => {
       return res.status(403).json({ success: false, message: 'Điểm uy tín không đủ để gửi cảnh báo bản đồ.' });
     }
 
+    // ===== CHAN 3 + TU PHUC HOI: ALL_CLEAR dong cac canh bao con song trong ~220m =====
+    if (pulse_type === 'ALL_CLEAR') {
+      const [cleared] = await db.execute(
+        `UPDATE urban_pulses SET status = 'EXPIRED', expires_at = NOW()
+         WHERE status != 'EXPIRED' AND expires_at > NOW()
+           AND pulse_type IN ('FLOOD','TRAFFIC_JAM')
+           AND ABS(latitude - ?) < 0.002 AND ABS(longitude - ?) < 0.002`,
+        [lat, lng]
+      );
+      const clearHash = geohash.encode(lat, lng, 9);
+      await db.execute(
+        `INSERT INTO urban_pulses (user_id, pulse_type, latitude, longitude, geohash, description, status, expires_at)
+         VALUES (?, 'ALL_CLEAR', ?, ?, ?, ?, 'VERIFIED', DATE_ADD(NOW(), INTERVAL 24 HOUR))`,
+        [req.user.id, lat, lng, clearHash, description ? String(description).trim().slice(0,255) : '']
+      );
+      pulseCache.clear();
+      return res.json({
+        success: true,
+        message: 'Đã ghi nhận khu vực thông thoáng — tự động đóng ' + cleared.affectedRows + ' cảnh báo lân cận.',
+        data: { cleared: cleared.affectedRows, status: 'VERIFIED' },
+      });
+    }
+
     // Mã hóa tọa độ thành Geohash cấp độ 7 (ô lưới ~153m x 153m)
     const hash7 = geohash.encode(lat, lng, 7);
-    const cleanDesc = description ? description.trim().slice(0, 255) : '';
+    const cleanDescEarly = description ? description.trim().slice(0, 255) : '';
+    const cleanDesc = cleanDescEarly;
     const ttlHours = PULSE_TTL_HOURS[pulse_type];
 
     // Kiểm tra xem trong ô lưới ~150m này đã có cảnh báo cùng loại còn sống chưa (tránh spam trùng điểm)
@@ -67,14 +93,46 @@ router.post('/pulses', verifyToken, async (req, res) => {
       });
     }
 
+    // ===== ZERO-TRUST: cham diem bang chung tu 3 chan kieng =====
+    let evidenceScore = 0;
+    const evidence = { trust_score: req.user.trust_score };
+
+    // Chan 1 — Cam bien vat ly: GPS speed (m/s) + accuracy (m) tu device
+    const spd = parseFloat(speed);
+    const acc = parseFloat(accuracy);
+    if (!isNaN(spd) && spd >= 0 && spd <= 60 && !isNaN(acc) && acc >= 0 && acc <= 1000) {
+      evidence.telemetry = { speed_mps: spd, speed_kmh: Math.round(spd * 3.6), accuracy_m: acc };
+      evidenceScore += 25;
+    }
+
+    // Chan 2 — Anh bang chung chup truc tiep (camera, timestamp tuoi <15p)
+    if (typeof photo === 'string' && photo.startsWith('data:image/') && photo.length < 1500000) {
+      const ts = parseInt(photo_timestamp, 10);
+      const ageMs = Date.now() - ts;
+      const fresh = !isNaN(ts) && ageMs >= -60000 && ageMs < 15 * 60 * 1000;
+      evidence.photo = { bytes: photo.length, timestamp: ts, fresh };
+      evidenceScore += fresh ? 30 : 10;
+      // AI Vision doi chieu anh voi loai su co + phat hien anh gia/screenshot
+      const vision = await validatePulsePhoto(photo, pulse_type, cleanDesc);
+      if (vision) {
+        evidence.vision = vision;
+        if (vision.trustworthy) evidenceScore += 20;
+        else if (vision.trustworthy === false) evidenceScore -= 25;
+      }
+    }
+
+    // Chan 3 — Trong so cong dong: trust_score cao tu dong VERIFIED
+    const initialStatus =
+      req.user.trust_score >= 80 || evidenceScore >= 60 ? 'VERIFIED' : 'PENDING_VERIFY';
+    evidence.evidence_score = evidenceScore;
+
     // Nếu là điểm mới -> Lưu với Geohash đầy đủ (độ chính xác 9 ký tự ~5m)
     const fullHash = geohash.encode(lat, lng, 9);
-    const initialStatus = req.user.trust_score >= 80 ? 'VERIFIED' : 'PENDING_AI';
 
     const [result] = await db.execute(
-      `INSERT INTO urban_pulses (user_id, pulse_type, latitude, longitude, geohash, description, status, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? HOUR))`,
-      [req.user.id, pulse_type, lat, lng, fullHash, cleanDesc, initialStatus, ttlHours]
+      `INSERT INTO urban_pulses (user_id, pulse_type, latitude, longitude, geohash, description, status, expires_at, evidence)
+       VALUES (?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? HOUR), ?)`,
+      [req.user.id, pulse_type, lat, lng, fullHash, cleanDesc, initialStatus, ttlHours, JSON.stringify(evidence)]
     );
 
     pulseCache.clear(); // Diem moi -> xoa cache de hien thi ngay

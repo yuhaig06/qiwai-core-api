@@ -25,12 +25,13 @@ CREATE TABLE IF NOT EXISTS risk_entities (
 CREATE TABLE IF NOT EXISTS urban_pulses (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NULL,
-    pulse_type ENUM('FLOOD', 'TRAFFIC_JAM', 'CONSTRUCTION', 'SECURITY') NOT NULL,
+    pulse_type ENUM('FLOOD', 'TRAFFIC_JAM', 'CONSTRUCTION', 'SECURITY', 'ALL_CLEAR') NOT NULL,
     latitude DECIMAL(10, 8) NOT NULL,
     longitude DECIMAL(11, 8) NOT NULL,
     geohash VARCHAR(12) NOT NULL,
     description VARCHAR(255),
-    status ENUM('PENDING_AI', 'VERIFIED', 'EXPIRED') DEFAULT 'PENDING_AI',
+    evidence TEXT NULL,
+    status ENUM('PENDING_AI', 'PENDING_VERIFY', 'VERIFIED', 'EXPIRED') DEFAULT 'PENDING_VERIFY',
     expires_at TIMESTAMP NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_geohash_status (geohash, status)

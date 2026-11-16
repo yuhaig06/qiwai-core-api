@@ -14,7 +14,7 @@ app.use(helmet({
   originAgentCluster: false
 }));
 app.use(cors());
-app.use(express.json({ limit: '10kb' }));
+app.use(express.json({ limit: '1mb' })); // 1mb: du cho anh bang chung da nen phia client
 app.use(express.urlencoded({ extended: true }));
 
 // Phục vụ giao diện tĩnh

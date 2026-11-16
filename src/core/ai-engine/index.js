@@ -32,4 +32,35 @@ Trả về JSON duy nhất, không thêm chữ nào khác:
   }
 }
 
-module.exports = { analyzeRiskWithAI };
+
+// Chan 2: AI Vision doi chieu anh bang chung chup truc tiep tai hien truong
+async function validatePulsePhoto(photoDataUrl, pulseType, description) {
+  try {
+    const comma = photoDataUrl.indexOf(',');
+    if (comma < 0) return null;
+    const mimeType = photoDataUrl.slice(5, photoDataUrl.indexOf(';'));
+    const base64 = photoDataUrl.slice(comma + 1);
+    const promptText = 'Day la anh bang chung duoc chup tai hien truong cho canh bao "' + pulseType + '" tai Viet Nam. Mo ta nguoi dung: "' + description + '". ' +
+      'Hay danh gia JSON: {"relevant":true/false,"staged_or_screenshot":true/false,"confidence":0-100} ' +
+      '- relevant=true neu anh thuc su the hien dung loai su co (FLOOD=nuoc ngap, TRAFFIC_JAM=ket xe, CONSTRUCTION=cong trinh, SECURITY=tinh huong bat thuong/an ninh). ' +
+      '- staged_or_screenshot=true neu anh la anh cu, screenshot, anh gia, hoac khong khop mo ta.';
+    const response = await ai.models.generateContent({
+      model: ACTIVE_MODEL,
+      contents: [{
+        role: 'user',
+        parts: [
+          { inlineData: { mimeType: mimeType, data: base64 } },
+          { text: promptText }
+        ]
+      }],
+      config: { responseMimeType: 'application/json', temperature: 0.1 },
+    });
+    const parsed = JSON.parse(response.text);
+    return Object.assign({}, parsed, { trustworthy: parsed.relevant === true && parsed.staged_or_screenshot !== true });
+  } catch (error) {
+    console.warn('[QIWAI Vision] Loi kiem tra anh:', error.status || error.message);
+    return null;
+  }
+}
+
+module.exports = { analyzeRiskWithAI, validatePulsePhoto };

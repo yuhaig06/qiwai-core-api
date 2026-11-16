@@ -108,8 +108,14 @@
                 <option value="TRAFFIC_JAM">Kẹt xe (TRAFFIC_JAM)</option>
                 <option value="CONSTRUCTION">Công trình (CONSTRUCTION)</option>
                 <option value="SECURITY">An ninh (SECURITY)</option>
+                <option value="ALL_CLEAR">Đã thông thoáng / Hết sự cố</option>
               </select>
               <input id="pulseDesc" type="text" class="form-control mb-2" placeholder="Mô tả ngắn (vd: ngập 30cm sau mưa)" maxlength="255" />
+              <div class="mb-2">
+                <label class="form-label small text-muted mb-1"><i class="bi bi-camera"></i> Ảnh bằng chứng (nên chụp trực tiếp tại chỗ — giúp AI xác minh)</label>
+                <input id="pulsePhoto" type="file" class="form-control form-control-sm" accept="image/*" capture="environment" onchange="onPhotoPick(this)" />
+                <div id="photoInfo" class="small text-success mt-1"></div>
+              </div>
               <button class="btn btn-success w-100" onclick="submitPulse()"><i class="bi bi-pin-map"></i> Ghim lên bản đồ</button>
               <div id="pulseMsg" class="small mt-2"></div>
             </div>
@@ -232,7 +238,7 @@
     }
 
     const PULSE_COLORS = {
-      FLOOD: '#38bdf8', TRAFFIC_JAM: '#f59e0b', CONSTRUCTION: '#eab308', SECURITY: '#a855f7'
+      FLOOD: '#38bdf8', TRAFFIC_JAM: '#f59e0b', CONSTRUCTION: '#eab308', SECURITY: '#a855f7', ALL_CLEAR: '#10b981'
     };
 
     map.on('click', function (e) {
@@ -327,6 +333,55 @@
       showToast('Đã đăng xuất.', 'secondary');
     }
 
+    let pickedPhoto = null;   // {dataUrl, timestamp}
+
+    function onPhotoPick(input) {
+      const file = input.files && input.files[0];
+      const info = document.getElementById('photoInfo');
+      if (!file) { pickedPhoto = null; info.innerHTML=''; return; }
+      const timestamp = Date.now();
+      compressImage(file).then(dataUrl => {
+        pickedPhoto = { dataUrl, timestamp };
+        info.innerHTML = '<i class="bi bi-check-circle"></i> Đã nén ảnh (' + Math.round(dataUrl.length/1024) + 'KB) — sẵn sàng gửi';
+      }).catch(() => {
+        pickedPhoto = null;
+        info.innerHTML = '<span class="text-warning">Không đọc được ảnh, gửi không kèm ảnh.</span>';
+      });
+    }
+
+    function compressImage(file, maxSize, quality) {
+      maxSize = maxSize || 640; quality = quality || 0.7;
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+          const c = document.createElement('canvas');
+          c.width = Math.round(img.width * scale);
+          c.height = Math.round(img.height * scale);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          URL.revokeObjectURL(img.src);
+          resolve(c.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = reject;
+        img.src = URL.createObjectURL(file);
+      });
+    }
+
+    // Cam bien vat ly: lay toc do + do chinh xac GPS hien tai (neu trinh duyet cho phep)
+    function getTelemetry() {
+      return new Promise(resolve => {
+        if (!navigator.geolocation) return resolve({});
+        navigator.geolocation.getCurrentPosition(
+          pos => resolve({
+            speed: (typeof pos.coords.speed === 'number') ? pos.coords.speed : undefined,
+            accuracy: (typeof pos.coords.accuracy === 'number') ? pos.coords.accuracy : undefined
+          }),
+          () => resolve({}),
+          { timeout: 5000, maximumAge: 30000 }
+        );
+      });
+    }
+
     async function submitPulse() {
       const msg = document.getElementById('pulseMsg');
       if (!pendingPoint) return;
@@ -336,19 +391,29 @@
       const description = document.getElementById('pulseDesc').value;
       msg.innerHTML = '<span class="text-info">⏳ Đang ghim...</span>';
 
+      // Thu thap bang chung: cam bien GPS + anh da nen
+      const tele = await getTelemetry();
+      const body = {
+        pulse_type, latitude: pendingPoint.lat, longitude: pendingPoint.lng, description
+      };
+      if (tele.speed !== undefined) body.speed = tele.speed;
+      if (tele.accuracy !== undefined) body.accuracy = tele.accuracy;
+      if (pickedPhoto) { body.photo = pickedPhoto.dataUrl; body.photo_timestamp = pickedPhoto.timestamp; }
+
       try {
         const res = await fetch('/api/v1/urban/pulses', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...authHeaders() },
-          body: JSON.stringify({
-            pulse_type, latitude: pendingPoint.lat, longitude: pendingPoint.lng, description
-          })
+          body: JSON.stringify(body)
         });
         const json = await res.json();
         if (json.success) {
           msg.innerHTML = '<span class="text-success">✅ ' + escapeHtml(json.message) + '</span>';
           showToast(json.message, 'success');
           document.getElementById('pulseFormCard').classList.add('d-none');
+          pickedPhoto = null;
+          document.getElementById('pulsePhoto').value = '';
+          document.getElementById('photoInfo').innerHTML = '';
           const c = map.getCenter();
           loadUrbanPulses(c.lat, c.lng);
           pendingPoint = null;
