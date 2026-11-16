@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#0f172a" />
-  <title>QIWAI 2050 — An Ninh & Đô Thị Thông Minh</title>
+  <title>QIWAI — An Ninh & Đô Thị Thông Minh</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
   <style>
     body { background: #0b1120; min-height: 100vh; }
@@ -17,8 +17,7 @@
     .qiwai-shell { height: calc(100vh - 64px); }
     .panel-col { height: 100%; overflow-y: auto; }
     .map-col { height: 100%; position: relative; }
-    #map { position: absolute; inset: 0; border-radius: 0 0 1rem 1rem; }
-    .maplibregl-ctrl-attrib { font-size: 10px; }
+    #map { position: absolute; inset: 0; }
     .qiwai-card { background: #111a2e; border: 1px solid #1e293b; border-radius: 14px; }
     .qiwai-card .card-title { font-size: .95rem; font-weight: 600; }
     .result-box { border-radius: 10px; font-size: .85rem; line-height: 1.45; display: none; }
@@ -27,12 +26,7 @@
     .SUSPICIOUS { background: rgba(245,158,11,.15); border: 1px solid #f59e0b; color: #fcd34d; }
     .SAFE { background: rgba(16,185,129,.15); border: 1px solid #10b981; color: #6ee7b7; }
     .pulse-highlight { border-color: #38bdf8 !important; box-shadow: 0 0 0 1px #38bdf8; }
-    .pulse-dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff;
-      box-shadow: 0 0 10px rgba(239,68,68,.9); cursor: pointer; }
-    .pulse-dot.norm { background: #ef4444; }
-    .pulse-dot.sec { background: #a855f7; box-shadow: 0 0 10px rgba(168,85,247,.9); }
-    .pulse-dot.pending { background: #f59e0b; }
-    #mapLock { z-index: 600; background: rgba(11,17,32,.88); border-radius: 0 0 1rem 1rem; }
+    .leaflet-popup-content { color: #0f172a; }
     @media (max-width: 991.98px) {
       .qiwai-shell { height: auto; }
       .map-col { height: 60vh; min-height: 320px; }
@@ -43,7 +37,7 @@
 <body>
   <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary-subtle px-3">
     <span class="navbar-brand mb-0"><i class="bi bi-lightning-charge-fill text-warning"></i> <span class="brand-text">QIWAI</span> CORE</span>
-    <span class="badge text-bg-secondary">TP.HCM 2026</span>
+    <span class="badge text-bg-secondary">TP.HCM Pilot</span>
     <div class="ms-auto d-flex align-items-center gap-2">
       <span id="navUser" class="small text-muted"></span>
       <button id="navLogout" class="btn btn-sm btn-outline-danger d-none" onclick="doLogout()"><i class="bi bi-box-arrow-right"></i> Thoát</button>
@@ -52,9 +46,11 @@
 
   <div class="container-fluid qiwai-shell">
     <div class="row g-3 h-100 p-3">
+      <!-- PANEL TRAI -->
       <div class="col-lg-4 panel-col">
         <div class="d-flex flex-column gap-3">
 
+          <!-- AUTH -->
           <div class="card qiwai-card" id="authCard">
             <div class="card-body">
               <h2 class="card-title mb-3"><i class="bi bi-person-lock text-primary"></i> Tài khoản QIWAI</h2>
@@ -77,6 +73,7 @@
             </div>
           </div>
 
+          <!-- SHIELD -->
           <div class="card qiwai-card">
             <div class="card-body">
               <h2 class="card-title mb-3"><i class="bi bi-shield-lock text-info"></i> QIWAI Shield — Xác thực AI 3 lớp</h2>
@@ -91,6 +88,7 @@
             </div>
           </div>
 
+          <!-- PULSE FORM (an khi click ban do) -->
           <div class="card qiwai-card d-none" id="pulseFormCard">
             <div class="card-body">
               <h2 class="card-title mb-2"><i class="bi bi-geo-alt text-primary"></i> Ghim cảnh báo</h2>
@@ -107,12 +105,13 @@
             </div>
           </div>
 
+          <!-- URBAN -->
           <div class="card qiwai-card">
             <div class="card-body">
               <h2 class="card-title mb-2"><i class="bi bi-map text-success"></i> QIWAI Urban</h2>
               <p class="text-muted small mb-2">Bấm trực tiếp lên bản đồ để ghim cảnh báo, hoặc quét nhanh:</p>
               <div class="d-flex flex-column gap-2">
-                <button class="btn btn-success" onclick="scanAllHCMC()"><i class="bi bi-pin-angle"></i> Quét toàn TP.HCM mở rộng</button>
+                <button class="btn btn-success" onclick="loadUrbanPulses(10.95, 106.95)"><i class="bi bi-pin-angle"></i> Quét toàn TP.HCM mở rộng</button>
                 <div class="d-flex flex-wrap gap-1 mt-2" id="districtChips"></div>
               </div>
               <div id="urbanStatus" class="small text-info mt-2"></div>
@@ -121,16 +120,9 @@
         </div>
       </div>
 
+      <!-- BAN DO -->
       <div class="col-lg-8 map-col">
-        <div id="map"></div>
-        <div id="mapLock" class="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center">
-          <div class="text-center p-4">
-            <i class="bi bi-lock-fill fs-1 text-warning"></i>
-            <h5 class="mt-2">Đăng nhập để xem bản đồ</h5>
-            <p class="text-muted small">QIWAI Urban chỉ mở dữ liệu sau khi xác thực tài khoản QIWAI.</p>
-            <button class="btn btn-primary" onclick="document.getElementById('authId').focus();document.getElementById('authCard').scrollIntoView({behavior:'smooth'})">Đến form đăng nhập</button>
-          </div>
-        </div>
+        <div id="map" class="rounded-4 border border-secondary"></div>
       </div>
     </div>
   </div>
@@ -138,52 +130,74 @@
   <div class="toast-container position-fixed top-0 end-0 p-3" id="toastBox" style="z-index:1080"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     let authToken = localStorage.getItem('qiwai_token') || '';
     let authUser = JSON.parse(localStorage.getItem('qiwai_user') || 'null');
     let pendingPoint = null;
-    let pulseMarkers = [];
 
-    // ===== BAN DO 3D: MapLibre GL + OpenFreeMap (mien phi, khong API key) =====
-    const map = new maplibregl.Map({
-      container: 'map',
-      style: 'https://tiles.openfreemap.org/styles/liberty',
-      center: [106.95, 10.95], // MapLibre dung [lng, lat]
+    // Khoa khung nhin TP.HCM mo rong 2026 (gom Binh Duong + Ba Ria - Vung Tau)
+    const hcmcBounds = [
+      [10.30, 106.30], // Canh Tay Nam (Vung Tau / Can Gio)
+      [11.55, 107.65]  // Canh Dong Bac (Dau Tieng / Xuyen Moc)
+    ];
+
+    const map = L.map('map', {
+      center: [10.95, 106.95],
       zoom: 11,
-      pitch: 50,               // Goc nghieng 3D
-      bearing: 0,
       minZoom: 9,
-      maxBounds: [[106.30, 10.30], [107.65, 11.55]], // [lng,lat] goc TayNam -> DongBac
-      attributionControl: { compact: true }
+      maxBounds: hcmcBounds,
+      maxBoundsViscosity: 0.8
     });
 
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+    // Tile providers theo chuoi du phong: CARTO dark -> OSM -> Esri
+    // CARTO mien phi, than thien Leaflet, phu song toan cau (gan giong Google Maps)
+    const tileProviders = [
+      {
+        name: 'Esri World Street',
+        layer: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+          attribution: 'Tiles &copy; Esri | QIWAI Urban Layer',
+          maxZoom: 19
+        })
+      },
+      {
+        name: 'OpenStreetMap',
+        layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap | QIWAI Urban Layer',
+          maxZoom: 19
+        })
+      },
+      {
+        name: 'Esri World Imagery',
+        layer: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics | QIWAI Urban Layer',
+          maxZoom: 19
+        })
+      }
+    ];
 
-    // Dinh vi GPS thuc te: cham xanh + sai so + la ban + bam theo buoc di chuyen
-    map.addControl(new maplibregl.GeolocateControl({
-      positionOptions: { enableHighAccuracy: true },
-      trackUserLocation: true,
-      showUserHeading: true
-    }), 'top-right');
+    let providerIndex = 0;
+    function activateProvider(i) {
+      tileProviders.forEach((p, idx) => {
+        if (map.hasLayer(p.layer)) map.removeLayer(p.layer);
+      });
+      tileProviders[i].layer.addTo(map);
+      if (i > 0) showToast('Tile provider bi chan — da chuyen sang ' + tileProviders[i].name, 'warning');
+    }
 
-    // Tang toa nha 3D khi zoom gan
-    map.on('style.load', function () {
-      if (!map.getSource('openmaptiles')) return;
-      map.addLayer({
-        id: 'qiwai-3d-buildings',
-        type: 'fill-extrusion',
-        source: 'openmaptiles',
-        'source-layer': 'building',
-        minzoom: 14,
-        paint: {
-          'fill-extrusion-color': '#64748b',
-          'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 8],
-          'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0],
-          'fill-extrusion-opacity': 0.65
+    tileProviders.forEach((p, i) => {
+      p.layer.on('tileerror', function () {
+        // Neu provider hien tai loi va con provider du phong -> chuyen tiep
+        if (i === providerIndex && providerIndex < tileProviders.length - 1) {
+          providerIndex++;
+          activateProvider(providerIndex);
         }
       });
     });
+    activateProvider(0);
+
+    let markersLayer = L.layerGroup().addTo(map);
+    let pendingMarker = null;
 
     function escapeHtml(str) {
       return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -202,28 +216,20 @@
       el.addEventListener('hidden.bs.toast', () => el.remove());
     }
 
-    // Click ban do -> chon diem ghim canh bao
     map.on('click', function (e) {
-      pendingPoint = { lat: e.lngLat.lat, lng: e.lngLat.lng };
+      pendingPoint = { lat: e.latlng.lat, lng: e.latlng.lng };
       document.getElementById('pulseCoords').innerText =
         'Tọa độ: ' + pendingPoint.lat.toFixed(5) + ', ' + pendingPoint.lng.toFixed(5);
       const card = document.getElementById('pulseFormCard');
       card.classList.remove('d-none');
       card.classList.add('pulse-highlight');
       card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      if (pendingMarkerEl) pendingMarkerEl.remove();
-      pendingMarkerEl = makePulseEl('#38bdf8');
-      pendingMarkerEl.setLngLat([pendingPoint.lng, pendingPoint.lat]).addTo(map);
+      if (pendingMarker) map.removeLayer(pendingMarker);
+      pendingMarker = L.circleMarker([pendingPoint.lat, pendingPoint.lng], {
+        color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: 0.5, radius: 10
+      }).addTo(map);
     });
-    let pendingMarkerEl = null;
 
-    function makePulseEl(color) {
-      const el = document.createElement('div');
-      el.style.cssText = 'width:16px;height:16px;border-radius:50%;border:2px solid #fff;background:' + color + ';box-shadow:0 0 10px ' + color + ';cursor:pointer;';
-      return new maplibregl.Marker({ element: el });
-    }
-
-    // ===== AUTH =====
     function authHeaders() {
       return authToken ? { 'Authorization': 'Bearer ' + authToken } : {};
     }
@@ -233,29 +239,24 @@
       const userBox = document.getElementById('authUser');
       const navUser = document.getElementById('navUser');
       const navLogout = document.getElementById('navLogout');
-      const lock = document.getElementById('mapLock');
-      const loggedIn = !!(authUser && authToken);
-      if (loggedIn) {
+      if (authUser && authToken) {
         guest.classList.add('d-none');
         userBox.classList.remove('d-none');
         navUser.innerText = authUser.phone_or_email;
         navLogout.classList.remove('d-none');
         document.getElementById('authUserName').innerText = authUser.phone_or_email;
         document.getElementById('authTrust').innerText = authUser.trust_score;
-        lock.classList.add('d-none');
       } else {
         guest.classList.remove('d-none');
         userBox.classList.add('d-none');
         navUser.innerText = '';
         navLogout.classList.add('d-none');
-        lock.classList.remove('d-none');
       }
     }
 
     async function doLogin() {
       const phone_or_email = document.getElementById('authId').value.trim();
       const password = document.getElementById('authPass').value;
-      if (!phone_or_email || !password) return showToast('Vui lòng nhập đủ SĐT/Email và mật khẩu.', 'warning');
       try {
         const res = await fetch('/api/v1/auth/login', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -268,7 +269,6 @@
           localStorage.setItem('qiwai_user', JSON.stringify(authUser));
           showToast('Đăng nhập thành công!', 'success');
           renderAuth();
-          scanAllHCMC(); // Mo khoa ban do ngay sau login
         } else { showToast(json.message || 'Đăng nhập thất bại', 'danger'); }
       } catch (e) { showToast('Lỗi kết nối server.', 'danger'); }
     }
@@ -276,8 +276,6 @@
     async function doRegister() {
       const phone_or_email = document.getElementById('authId').value.trim();
       const password = document.getElementById('authPass').value;
-      if (!phone_or_email) return showToast('Vui lòng nhập SĐT hoặc Email.', 'warning');
-      if (!password || password.length < 6) return showToast('Mật khẩu phải có ít nhất 6 ký tự.', 'warning');
       try {
         const res = await fetch('/api/v1/auth/register', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -294,11 +292,9 @@
       localStorage.removeItem('qiwai_token');
       localStorage.removeItem('qiwai_user');
       renderAuth();
-      clearPulseMarkers();
-      showToast('Đã đăng xuất — bản đồ đã khóa.', 'secondary');
+      showToast('Đã đăng xuất.', 'secondary');
     }
 
-    // ===== GHIM DIEM =====
     async function submitPulse() {
       const msg = document.getElementById('pulseMsg');
       if (!pendingPoint) return;
@@ -324,14 +320,13 @@
           const c = map.getCenter();
           loadUrbanPulses(c.lat, c.lng);
           pendingPoint = null;
-          if (pendingMarkerEl) { pendingMarkerEl.remove(); pendingMarkerEl = null; }
+          if (pendingMarker) { map.removeLayer(pendingMarker); pendingMarker = null; }
         } else {
           msg.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(json.message || 'Gửi thất bại') + '</span>';
         }
       } catch (e) { msg.innerHTML = '<span class="text-danger">❌ Lỗi kết nối server.</span>'; }
     }
 
-    // ===== SHIELD =====
     async function analyzeShield() {
       const type = document.getElementById('shieldType').value;
       const content = document.getElementById('shieldContent').value;
@@ -367,67 +362,37 @@
       }
     }
 
-    // ===== URBAN (MapLibre) =====
-    function clearPulseMarkers() {
-      pulseMarkers.forEach(m => m.remove());
-      pulseMarkers = [];
-    }
-
-    function renderPulses(json, statusEl) {
-      clearPulseMarkers();
-      if (json.success) {
-        statusEl.innerHTML = '<i class="bi bi-check-circle text-success"></i> ' + json.count +
-          ' điểm biến động' + (json.area_center_geohash ? ' (vùng: ' + escapeHtml(json.area_center_geohash) + ')' : '');
-        json.data.forEach(p => {
-          const cls = p.pulse_type === 'SECURITY' ? 'sec' : (p.status === 'PENDING_AI' ? 'pending' : 'norm');
-          const el = document.createElement('div');
-          el.className = 'pulse-dot ' + cls;
-          el.title = p.pulse_type + (p.description ? ' — ' + p.description : '');
-          const popup = new maplibregl.Popup({ offset: 12 }).setHTML(
-            '<b>🚨 ' + escapeHtml(p.pulse_type) + '</b><br/>' +
-            escapeHtml(p.description || 'Cảnh báo đô thị') + '<br/>' +
-            '<small>Trạng thái: ' + escapeHtml(p.status) + '</small>'
-          );
-          const marker = new maplibregl.Marker({ element: el })
-            .setLngLat([parseFloat(p.longitude), parseFloat(p.latitude)])
-            .setPopup(popup)
-            .addTo(map);
-          pulseMarkers.push(marker);
-        });
-      } else {
-        statusEl.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(json.message || 'Lỗi tải dữ liệu') + '</span>';
-      }
-    }
-
-    async function fetchPulses(url, statusEl, fly) {
-      if (!authToken) {
-        statusEl.innerHTML = '<span class="text-warning">🔒 Đăng nhập để xem dữ liệu bản đồ.</span>';
-        showToast('Vui lòng đăng nhập để xem bản đồ QIWAI Urban.', 'warning');
-        return;
-      }
+    async function loadUrbanPulses(lat, lng) {
+      const statusEl = document.getElementById('urbanStatus');
       statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang tải lớp phủ...';
-      if (fly) fly();
+      map.flyTo([lat, lng], 14);
+
       try {
-        const res = await fetch(url);
+        const res = await fetch(`/api/v1/urban/pulses?lat=${lat}&lng=${lng}`);
         const json = await res.json();
-        renderPulses(json, statusEl);
+
+        markersLayer.clearLayers();
+        if (json.success) {
+          statusEl.innerHTML = `<i class="bi bi-check-circle text-success"></i> ${json.count} điểm biến động (Geohash: ${escapeHtml(json.area_center_geohash)})`;
+          json.data.forEach(p => {
+            const isDanger = p.pulse_type === 'SECURITY';
+            const marker = L.circleMarker([p.latitude, p.longitude], {
+              color: isDanger ? '#a855f7' : '#ef4444',
+              fillColor: isDanger ? '#c084fc' : '#f87171',
+              fillOpacity: 0.7, radius: 12
+            }).addTo(markersLayer);
+            marker.bindPopup(
+              '<b>🚨 ' + escapeHtml(p.pulse_type) + '</b><br/>' +
+              escapeHtml(p.description || 'Cảnh báo đô thị') + '<br/>' +
+              '<small>Trạng thái: ' + escapeHtml(p.status) + '</small>'
+            ).openPopup();
+          });
+        } else {
+          statusEl.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(json.message || 'Lỗi tải dữ liệu') + '</span>';
+        }
       } catch (err) {
         statusEl.innerHTML = '<span class="text-danger">❌ Lỗi tải dữ liệu bản đồ.</span>';
       }
-    }
-
-    // Quet theo tam diem (geohash ~vung lan can). MapLibre nhan [lng, lat]
-    function loadUrbanPulses(lat, lng) {
-      const statusEl = document.getElementById('urbanStatus');
-      fetchPulses('/api/v1/urban/pulses?lat=' + lat + '&lng=' + lng, statusEl,
-        () => map.flyTo({ center: [lng, lat], zoom: 13 }));
-    }
-
-    // Quet TOAN BO vung TP.HCM mo rong bang bounding box
-    function scanAllHCMC() {
-      const statusEl = document.getElementById('urbanStatus');
-      fetchPulses('/api/v1/urban/pulses?bbox=10.30,106.30,11.55,107.65', statusEl,
-        () => map.fitBounds([[106.30, 10.30], [107.65, 11.55]], { padding: 40 }));
     }
 
     if ('serviceWorker' in navigator) {
@@ -436,7 +401,7 @@
       });
     }
 
-    // Chips quet nhanh toan TP.HCM mo rong 2026
+    // Chips quet nhanh toan TP.HCM
     const DISTRICTS = [
       ['Trung tâm', 10.7769, 106.7009], ['Thủ Đức', 10.8500, 106.7700],
       ['Bình Dương', 10.9800, 106.7200], ['Thuận An', 10.9100, 106.7600],
@@ -458,8 +423,7 @@
     });
 
     renderAuth();
-    // Ban do luon hien, nhung du lieu urban chi tai khi da login
-    if (authToken) scanAllHCMC();
+    loadUrbanPulses(10.95, 106.95);
   </script>
 </body>
 </html>
