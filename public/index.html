@@ -189,7 +189,7 @@
     // GPS thuc te: chi tren HTTPS/localhost (chuan bao mat trinh duyet)
     if (window.isSecureContext && navigator.geolocation) {
       map.addControl(new maplibregl.GeolocateControl({
-        positionOptions: { enableHighAccuracy: true },
+        positionOptions: { enableHighAccuracy: /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) },
         trackUserLocation: true,
         showUserHeading: true
       }), 'top-right');
@@ -552,7 +552,11 @@
           statusEl.innerHTML = '<span class="text-danger">❌ ' + (msgs[err.code] || err.message) + '</span>';
           showToast(msgs[err.code] || 'Không lấy được GPS', 'danger');
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        {
+          enableHighAccuracy: /Android|iPhone|iPad|iPod/i.test(navigator.userAgent),
+          timeout: 20000,
+          maximumAge: 60000
+        }
       );
     }
 
