@@ -10,8 +10,10 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3000
+      # Dien cac key that trong Render Dashboard -> Environment:
+      # DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
+      - key: DB_SSL
+        value: "true"
       # Dien cac key that trong Render Dashboard -> Environment:
       # DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
       # GEMINI_API_KEY, JWT_SECRET
