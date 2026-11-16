@@ -200,25 +200,18 @@
       map.addImage(e.id, new ImageData(1, 1), { pixelRatio: 1 });
     });
 
-    // Khoi nha 3D khi zoom sau
-    map.on('load', function () {
-      if (!map.getSource('openmaptiles')) return;
-      const layers = map.getStyle().layers || [];
-      const labelLayer = layers.find(l => l.type === 'symbol' && l.layout && l.layout['text-field']);
-      map.addLayer({
-        id: 'qiwai-3d-buildings',
-        source: 'openmaptiles',
-        'source-layer': 'building',
-        type: 'fill-extrusion',
-        minzoom: 14,
-        paint: {
-          'fill-extrusion-color': '#cbd5e1',
-          'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 10],
-          'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
-          'fill-extrusion-opacity': 0.75
-        }
-      }, labelLayer ? labelLayer.id : undefined);
-    });
+    // Style liberty da co san layer 'building-3d' nhung dung ["get","render_height"]
+    // -> mot so toa nha thieu thuoc tinh bi null gay loi console.
+    // Vá paint property bang coalesce de dam bao luon la number.
+    function patchBuilding3D() {
+      if (!map.getLayer('building-3d')) return;
+      map.setPaintProperty('building-3d', 'fill-extrusion-height',
+        ['coalesce', ['get', 'render_height'], ['get', 'height'], 10]);
+      map.setPaintProperty('building-3d', 'fill-extrusion-base',
+        ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0]);
+    }
+    map.on('load', patchBuilding3D);
+    map.on('styledata', patchBuilding3D);
 
     function escapeHtml(str) {
       return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
