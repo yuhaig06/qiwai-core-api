@@ -560,42 +560,42 @@
       manualPickMode = true;
       clearTimeout(manualPickTimer);
       manualPickTimer = setTimeout(() => { manualPickMode = false; }, 60000);
-      const isMobileDev = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      let gpsRetries = 0;
-      function tryGetPosition() {
-        navigator.geolocation.getCurrentPosition(
-        pos => {
-          const lat = pos.coords.latitude, lng = pos.coords.longitude;
-          const acc = pos.coords.accuracy ? ' (±' + Math.round(pos.coords.accuracy) + 'm)' : '';
-          console.log('[QIWAI GPS] fix:', lat, lng, 'acc:', pos.coords.accuracy, 'speed:', pos.coords.speed);
-          manualPickMode = false;
-          placeMeMarker(lat, lng, acc);
-        },
-        err => {
-          // Timeout lan 1 -> tu retry 1 lan nua (Windows dinh vi lan dau co the mat 30-60s)
-          if (err.code === 3 && gpsRetries < 1) {
-            gpsRetries++;
-            statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> GPS lần đầu hơi chậm — đang thử lại...';
-            setTimeout(tryGetPosition, 500);
-            return;
-          }
-          const msgs = {
-            1: 'Bạn đã từ chối quyền vị trí — bấm icon ổ khóa trên thanh địa chỉ để bật lại.',
-            2: 'Không bắt được tín hiệu GPS — ra ngoài trời thoáng hoặc bật Location trên máy.',
-            3: 'Hết thời gian chờ GPS — thử lại nhé.'
-          };
-          manualPickMode = false;
-          statusEl.innerHTML = '<span class="text-danger">❌ ' + (msgs[err.code] || err.message) + ' — bấm "Vị trí của tôi" rồi click bản đồ để chọn thủ công.</span>';
-          showToast(msgs[err.code] || 'Không lấy được GPS', 'danger');
-        },
-        {
-          enableHighAccuracy: isMobileDev,
-          timeout: 30000,
-          maximumAge: 300000
-        }
-        );
+      // Thuat toan 2 buoc: GPS do chinh xac cao (mobile co chip GPS) -> fallback Wi-Fi/IP (laptop/PC)
+      function onGpsSuccess(pos) {
+        const lat = pos.coords.latitude, lng = pos.coords.longitude;
+        const acc = pos.coords.accuracy ? ' (±' + Math.round(pos.coords.accuracy) + 'm)' : '';
+        console.log('[QIWAI GPS] fix:', lat, lng, 'acc:', pos.coords.accuracy, 'speed:', pos.coords.speed);
+        manualPickMode = false;
+        placeMeMarker(lat, lng, acc);
       }
-      tryGetPosition();
+      function onGpsFinalFail(err) {
+        const msgs = {
+          1: 'Bạn đã từ chối quyền vị trí — bấm icon ổ khóa trên thanh địa chỉ để bật lại.',
+          2: 'Không bắt được tín hiệu GPS — ra ngoài trời thoáng hoặc bật Location trên máy.',
+          3: 'Hết thời gian chờ GPS.'
+        };
+        manualPickMode = false;
+        statusEl.innerHTML = '<span class="text-danger">❌ ' + (msgs[err.code] || err.message) + ' — bấm "Vị trí của tôi" rồi click bản đồ để chọn thủ công.</span>';
+        showToast(msgs[err.code] || 'Không lấy được GPS', 'danger');
+      }
+      // Buoc 2: fallback Wi-Fi/IP — laptop khong co chip GPS se lay ngay toa do mang
+      function tryWifiFallback() {
+        statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang định vị qua Wi-Fi/mạng...';
+        navigator.geolocation.getCurrentPosition(onGpsSuccess, onGpsFinalFail, {
+          enableHighAccuracy: false,
+          timeout: 8000,
+          maximumAge: 60000
+        });
+      }
+      // Buoc 1: GPS chat luong cao, cho toi da 5s (mobile lock nhanh, laptop se rot xuong fallback)
+      navigator.geolocation.getCurrentPosition(onGpsSuccess, function (err) {
+        if (err.code === 1) return onGpsFinalFail(err); // tu choi quyen -> khong retry
+        tryWifiFallback();
+      }, {
+        enableHighAccuracy: true,
+        timeout: 5000,
+        maximumAge: 0
+      });
     }
 
     // Quet theo bbox bat ky: label = ten vung, bbox = "minLat,minLng,maxLat,maxLng", fly = bounds [lng,lat]
