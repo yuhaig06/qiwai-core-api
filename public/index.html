@@ -203,15 +203,46 @@
     // Style liberty da co san layer 'building-3d' nhung dung ["get","render_height"]
     // -> mot so toa nha thieu thuoc tinh bi null gay loi console.
     // Vá paint property bang coalesce de dam bao luon la number.
-    function patchBuilding3D() {
-      if (!map.getLayer('building-3d')) return;
-      map.setPaintProperty('building-3d', 'fill-extrusion-height',
-        ['coalesce', ['get', 'render_height'], ['get', 'height'], 10]);
-      map.setPaintProperty('building-3d', 'fill-extrusion-base',
-        ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0]);
+    // Style liberty cua OpenFreeMap co bug upstream:
+    // 1) building-3d paint dung ["get","render_height"] -> null tren mot so toa nha
+    // 2) filter cac layer POI/boundary/shield so sanh ["get","rank"/"admin_level"/"ref_length"]
+    //    -> feature thieu attribute bi null gay "Expected number, found null".
+    // Fix: patch paint bang coalesce + sanitize moi filter so sanh so.
+    function wrapGetForCompare(node, failValue) {
+      if (Array.isArray(node) && node[0] === 'get') return ['coalesce', node, failValue];
+      if (Array.isArray(node) && node[0] === 'coalesce') return node; // da patch -> khong boc lai
+      if (Array.isArray(node)) return node.map(n => wrapGetForCompare(n, failValue));
+      return node;
     }
-    map.on('load', patchBuilding3D);
-    map.on('styledata', patchBuilding3D);
+    function sanitizeExpr(node) {
+      if (!Array.isArray(node)) return node;
+      const op = node[0];
+      if (['<', '<=', '>', '>='].includes(op)) {
+        // Toan hang so sanh: boc ["get",...] -> null se fail filter (loai feature thieu data)
+        const failValue = (op === '>' || op === '>=') ? -1e9 : 1e9;
+        return [op, ...node.slice(1).map(v => wrapGetForCompare(v, failValue))];
+      }
+      return node.map(sanitizeExpr);
+    }
+    function patchStyleNulls() {
+      const style = map.getStyle();
+      if (!style || !style.layers) return;
+      style.layers.forEach(l => {
+        try {
+          if (!l.filter) return;
+          const san = sanitizeExpr(l.filter);
+          if (JSON.stringify(san) !== JSON.stringify(l.filter)) map.setFilter(l.id, san);
+        } catch (e) { /* layer khong setFilter duoc -> bo qua */ }
+      });
+      if (map.getLayer('building-3d')) {
+        map.setPaintProperty('building-3d', 'fill-extrusion-height',
+          ['coalesce', ['get', 'render_height'], ['get', 'height'], 10]);
+        map.setPaintProperty('building-3d', 'fill-extrusion-base',
+          ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0]);
+      }
+    }
+    map.on('load', patchStyleNulls);
+    map.on('styledata', patchStyleNulls);
 
     function escapeHtml(str) {
       return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
