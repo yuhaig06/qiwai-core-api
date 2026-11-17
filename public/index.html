@@ -108,7 +108,7 @@
               </div>
               <div id="authUser" class="d-none">
                 <div class="qiwai-profile">
-                  <div class="qiwai-avatar" id="authAvatar">Q</div>
+                  <div class="qiwai-avatar" id="authAvatar"><i class="bi bi-person-fill"></i></div>
                   <div class="qiwai-profile-info">
                     <div class="qiwai-profile-name" id="authUserName"></div>
                     <div class="qiwai-profile-sub"><i class="bi bi-stars"></i> Uy tín: <span class="qiwai-trust" id="authTrust">100</span></div>
@@ -363,9 +363,6 @@
         navUser.innerText = maskUserId(authUser.phone_or_email);
         navLogout.classList.remove('d-none');
         document.getElementById('authUserName').innerText = maskUserId(authUser.phone_or_email);
-        const rawId = String(authUser.phone_or_email || '');
-        const avText = rawId.includes('@') ? rawId[0].toUpperCase() : (rawId.replace(/\D/g, '').slice(-2) || 'Q');
-        document.getElementById('authAvatar').innerText = avText;
         document.getElementById('authTrust').innerText = authUser.trust_score;
         updateMapLock();
       } else {
