@@ -539,6 +539,88 @@
       showToast('Đã định vị: ' + nearest + acc, 'success');
     }
 
+    // ===== QiwaiVirtualGpsChip: chip GPS ao — Delta-Throttling + ngu dong khi an tab =====
+    class QiwaiVirtualGpsChip {
+      constructor(onSignal) {
+        this.onSignal = onSignal;
+        this.watchId = null;
+        this.lastPos = null;
+        this.lastEmit = 0;
+        this.minDistM = 5;        // chi phat khi di chuyen >5m
+        this.minIntervalMs = 3000; // ...hoac moi 3 giay
+        this._onVis = () => { if (document.hidden) this._sleep(); else this._wake(); };
+      }
+      _distM(a, b) {
+        const R = 6371000, toRad = d => d * Math.PI / 180;
+        const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+        const h = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLng/2)**2;
+        return 2 * R * Math.asin(Math.sqrt(h));
+      }
+      start() {
+        if (this.watchId !== null || !navigator.geolocation) return;
+        document.addEventListener('visibilitychange', this._onVis);
+        this._wake();
+      }
+      stop() {
+        this._sleep();
+        document.removeEventListener('visibilitychange', this._onVis);
+      }
+      _wake() {
+        if (this.watchId !== null) return;
+        this.watchId = navigator.geolocation.watchPosition(
+          p => this._onFix(p), () => {},
+          { enableHighAccuracy: false, maximumAge: 1000, timeout: 15000 }
+        );
+      }
+      _sleep() {
+        if (this.watchId !== null) { navigator.geolocation.clearWatch(this.watchId); this.watchId = null; }
+      }
+      _onFix(p) {
+        if (document.hidden) return; // ngu dong hoan toan khi an tab
+        const sig = { lat: p.coords.latitude, lng: p.coords.longitude, speed: p.coords.speed, accuracy: p.coords.accuracy };
+        const now = Date.now();
+        if (this.lastPos) {
+          const moved = this._distM(this.lastPos, sig);
+          if (moved < this.minDistM && now - this.lastEmit < this.minIntervalMs) return;
+        }
+        this.lastPos = { lat: sig.lat, lng: sig.lng };
+        this.lastEmit = now;
+        this.onSignal(sig);
+      }
+    }
+
+    let virtualGps = null;
+    let lastSyncTime = 0;
+    let lastUserPan = 0;
+    map.on('dragstart', () => { lastUserPan = Date.now(); });
+
+    function initVirtualGps() {
+      if (virtualGps) return;
+      virtualGps = new QiwaiVirtualGpsChip(sig => {
+        // 1. Cap nhat cham xanh + camera muot (chi bam theo khi user khong tu pan)
+        if (meMarker) meMarker.setLngLat([sig.lng, sig.lat]);
+        if (Date.now() - lastUserPan > 10000) {
+          map.easeTo({ center: [sig.lng, sig.lat], duration: 800 });
+        }
+        // 2. Micro-Payload <120 bytes gui ngam moi >=3s (telemetry -> tu dong clear canh bao)
+        const now = Date.now();
+        if (now - lastSyncTime >= 3000 && authToken) {
+          lastSyncTime = now;
+          fetch('/api/v1/urban/telemetry', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            body: JSON.stringify({
+              lat: Number(sig.lat.toFixed(6)),
+              lng: Number(sig.lng.toFixed(6)),
+              spd: (typeof sig.speed === 'number') ? Number(sig.speed.toFixed(1)) : undefined,
+              acc: Math.round(sig.accuracy || 20)
+            }),
+            keepalive: true
+          }).catch(() => {});
+        }
+      });
+    }
+
     // Dinh vi vi tri hien tai: GPS chay nen + cho phep bam chon thu cong tren ban do
     function locateMe() {
       const statusEl = document.getElementById('urbanStatus');
@@ -567,6 +649,8 @@
         console.log('[QIWAI GPS] fix:', lat, lng, 'acc:', pos.coords.accuracy, 'speed:', pos.coords.speed);
         manualPickMode = false;
         placeMeMarker(lat, lng, acc);
+        initVirtualGps();
+        virtualGps.start();
       }
       function onGpsFinalFail(err) {
         const msgs = {

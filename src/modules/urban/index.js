@@ -155,6 +155,43 @@ router.post('/pulses', verifyToken, async (req, res) => {
   }
 });
 
+// 1b. Telemetry nhip tim: POST /api/v1/urban/telemetry (Yeu cau JWT)
+// Nhan micro-payload {lat,lng,spd,acc} tu chip GPS ao (gui toi da ~20 lan/phut/user).
+// Neu user dang DI QUA (>25km/h) cho co canh bao FLOOD/TRAFFIC_JAM con song trong ~165m
+// -> vat ly chung minh duong da thong -> tu dong dong canh bao (Self-Healing Map).
+router.post('/telemetry', verifyToken, async (req, res) => {
+  try {
+    const lat = parseFloat(req.body.lat);
+    const lng = parseFloat(req.body.lng);
+    const spd = parseFloat(req.body.spd);
+    const acc = parseFloat(req.body.acc);
+
+    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      return res.status(400).json({ success: false, message: 'Telemetry khong hop le.' });
+    }
+
+    // Chi xu ly auto-clear khi co du lieu toc do dang tin cay
+    if (!isNaN(spd) && spd > 6.9 && !isNaN(acc) && acc <= 50) {
+      const [cleared] = await db.execute(
+        `UPDATE urban_pulses SET status = 'EXPIRED', expires_at = NOW()
+         WHERE status != 'EXPIRED' AND expires_at > NOW()
+           AND pulse_type IN ('FLOOD','TRAFFIC_JAM')
+           AND ABS(latitude - ?) < 0.0015 AND ABS(longitude - ?) < 0.0015`,
+        [lat, lng]
+      );
+      if (cleared.affectedRows > 0) {
+        pulseCache.clear();
+        console.log('[Urban Telemetry] Auto-clear', cleared.affectedRows, 'pulse(s) near', lat, lng, 'by user', req.user.id);
+      }
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('[Urban Telemetry Error]:', error);
+    return res.status(500).json({ success: false, message: 'Loi telemetry.' });
+  }
+});
+
 // 2. Truy vấn các điểm biến động quanh vị trí người dùng: GET /api/v1/urban/pulses?lat=...&lng=...
 router.get('/pulses', async (req, res) => {
   try {
