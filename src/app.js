@@ -13,7 +13,8 @@ app.use(helmet({
   crossOriginOpenerPolicy: false,
   originAgentCluster: false
 }));
-app.use(cors());
+const corsOrigins = (process.env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+app.use(cors(corsOrigins.length ? { origin: corsOrigins } : { origin: true }));
 app.use(express.json({ limit: '1mb' })); // 1mb: du cho anh bang chung da nen phia client
 app.use(express.urlencoded({ extended: true }));
 

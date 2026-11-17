@@ -43,6 +43,10 @@
     .qiwai-profile-name { font-weight: 600; font-size: .92rem; color: #f1f5f9;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .qiwai-profile-sub { font-size: .76rem; color: #94a3b8; margin-top: 2px; display: flex; align-items: center; gap: 4px; }
+    .qiwai-plan { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px;
+      font-size: .68rem; font-weight: 800; letter-spacing: .5px; }
+    .qiwai-plan.free { background: rgba(148,163,184,.15); color: #94a3b8; border: 1px solid rgba(148,163,184,.3); }
+    .qiwai-plan.pro { background: linear-gradient(135deg, rgba(245,158,11,.25), rgba(239,68,68,.2)); color: #fbbf24; border: 1px solid rgba(245,158,11,.4); }
     .qiwai-trust { display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; border-radius: 999px;
       font-size: .72rem; font-weight: 700; background: rgba(16,185,129,.15); color: #34d399;
       border: 1px solid rgba(16,185,129,.3); }
@@ -115,7 +119,7 @@
                   <div class="qiwai-avatar" id="authAvatar"><i class="bi bi-person-fill"></i></div>
                   <div class="qiwai-profile-info">
                     <div class="qiwai-profile-name" id="authUserName"></div>
-                    <div class="qiwai-profile-sub"><i class="bi bi-stars"></i> Uy tín: <span class="qiwai-trust" id="authTrust">100</span></div>
+                    <div class="qiwai-profile-sub"><i class="bi bi-stars"></i> Uy tín: <span class="qiwai-trust" id="authTrust">100</span> · <span id="authPlan" class="qiwai-plan">FREE</span></div>
                   </div>
                 </div>
               </div>
@@ -373,11 +377,14 @@
         navLogout.classList.remove('d-none');
         document.getElementById('authUserName').innerText = maskUserId(authUser.phone_or_email);
         document.getElementById('authTrust').innerText = authUser.trust_score;
+        const planEl = document.getElementById('authPlan');
+        if (planEl) { planEl.innerText = (authUser.plan || 'free').toUpperCase(); planEl.className = 'qiwai-plan ' + (authUser.plan === 'pro' ? 'pro' : 'free'); }
         updateMapLock();
       } else {
         guest.classList.remove('d-none');
         userBox.classList.add('d-none');
         navUser.innerText = '';
+        const planEl2 = document.getElementById('authPlan'); if (planEl2) planEl2.className = 'qiwai-plan free';
         navLogout.classList.add('d-none');
         updateMapLock();
         clearPulses();
@@ -536,7 +543,7 @@
       try {
         const res = await fetch('/api/v1/shield/analyze', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({ type, content })
         });
         const json = await res.json();

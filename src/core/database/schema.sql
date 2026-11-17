@@ -7,6 +7,9 @@ CREATE TABLE IF NOT EXISTS users (
     phone_or_email VARCHAR(150) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     trust_score INT DEFAULT 100,
+    plan ENUM('free','pro') NOT NULL DEFAULT 'free',
+    scan_date DATE NULL,
+    scan_count INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

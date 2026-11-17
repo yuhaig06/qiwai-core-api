@@ -2,7 +2,25 @@ const express = require('express');
 const router = express.Router();
 const db = require('../../core/database/db');
 const { analyzeRiskWithAI } = require('../../core/ai-engine');
-const { verifyToken } = require('../../core/middlewares/auth');
+const { verifyToken, verifyTokenOptional } = require('../../core/middlewares/auth');
+
+// ===== FREEMIUM: gioi han luot goi AI Gemini (chi lop ton token; hard-rule + cache van free) =====
+const FREE_DAILY_AI = 5;    // user free: 5 luot AI/ngay
+const GUEST_DAILY_AI = 3;   // khach (chua login): 3 luot AI/ngay/IP (in-memory)
+const guestAiUsage = new Map(); // ip -> { date, count }
+
+function guestAiRemaining(ip) {
+  const today = new Date().toISOString().slice(0, 10);
+  const rec = guestAiUsage.get(ip);
+  if (!rec || rec.date !== today) { guestAiUsage.set(ip, { date: today, count: 0 }); return GUEST_DAILY_AI; }
+  return Math.max(0, GUEST_DAILY_AI - rec.count);
+}
+function guestAiConsume(ip) {
+  const today = new Date().toISOString().slice(0, 10);
+  const rec = guestAiUsage.get(ip);
+  if (!rec || rec.date !== today) guestAiUsage.set(ip, { date: today, count: 1 });
+  else rec.count++;
+}
 const rateLimit = require('express-rate-limit');
 
 // Rate limit chuyen biet cho endpoint goi AI: 10 req/phut/IP
@@ -87,7 +105,7 @@ function runFallbackHeuristic(type, content) {
 }
 
 // API CHÍNH: POST /api/v1/shield/analyze
-router.post('/analyze', aiLimiter, async (req, res) => {
+router.post('/analyze', aiLimiter, verifyTokenOptional, async (req, res) => {
   try {
     const { type, content } = req.body;
     const validTypes = ['PHONE', 'URL', 'TEXT_PATTERN'];
@@ -146,8 +164,44 @@ router.post('/analyze', aiLimiter, async (req, res) => {
       }
     }
 
-    // LỚP 3: Gọi Gemini 3.5 Flash-Lite Free Tier
-    const aiResult = await analyzeRiskWithAI(type, cleanContent);
+    // LỚP 3: Gọi Gemini — kiem tra han muc goi AI theo goi cuoc
+    let aiAllowed = true, aiQuotaMsg = '';
+    if (req.user) {
+      const [uRows] = await db.execute("SELECT plan, DATE_FORMAT(scan_date,'%Y-%m-%d') AS scan_date, scan_count FROM users WHERE id = ?", [req.user.id]);
+      const u = uRows[0];
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+      if (u && u.plan === 'pro') {
+        aiAllowed = true;
+      } else {
+        const used = (u && u.scan_date === today) ? (u.scan_count || 0) : 0;
+        if (used >= FREE_DAILY_AI) {
+          aiAllowed = false;
+          aiQuotaMsg = 'Bạn đã dùng hết ' + FREE_DAILY_AI + ' lượt phân tích AI miễn phí hôm nay. Nâng cấp Pro để không giới hạn.';
+        } else {
+          const newCount = used + 1;
+          await db.execute('UPDATE users SET scan_date = ?, scan_count = ? WHERE id = ?', [today, newCount, req.user.id]);
+        }
+      }
+    } else {
+      const ip = req.ip || 'unknown';
+      if (guestAiRemaining(ip) <= 0) {
+        aiAllowed = false;
+        aiQuotaMsg = 'Khách dùng hết ' + GUEST_DAILY_AI + ' lượt AI miễn phí hôm nay. Đăng nhập để nhận thêm ' + FREE_DAILY_AI + ' lượt.';
+      } else {
+        guestAiConsume(ip);
+      }
+    }
+
+    const aiResult = aiAllowed ? await analyzeRiskWithAI(type, cleanContent) : null;
+    if (!aiAllowed) {
+      const fb = runFallbackHeuristic(type, cleanContent);
+      return res.status(429).json({
+        success: false,
+        quota_exceeded: true,
+        message: aiQuotaMsg,
+        data: { type, content: cleanContent, ...fb, analysis: fb.analysis + ' (' + aiQuotaMsg + ')' },
+      });
+    }
 
     if (aiResult) {
       const fullAnalysis = `${aiResult.reason} ${aiResult.action_advice}`;
