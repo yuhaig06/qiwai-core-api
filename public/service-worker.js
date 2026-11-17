@@ -1,5 +1,5 @@
 // QIWAI Service Worker — cache shell tinh, API luon goi mang
-const CACHE_NAME = 'qiwai-v32';
+const CACHE_NAME = 'qiwai-v33';
 const SHELL = ['/', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {

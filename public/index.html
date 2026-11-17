@@ -267,7 +267,8 @@
           ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0]);
       }
     }
-    map.on('load', patchStyleNulls); // chi chay 1 lan: setFilter trong styledata gay loop lam map treo
+    let styleNullsPatched = false;
+    map.on('styledata', () => { if (!styleNullsPatched) { styleNullsPatched = true; patchStyleNulls(); } }); // patch som, truoc khi tile parse
 
     function escapeHtml(str) {
       return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -294,7 +295,7 @@
       if (manualPickMode) {
         manualPickMode = false;
         clearTimeout(manualPickTimer);
-        placeMeMarker(e.lngLat.lat, e.lngLat.lng, ' (chọn thủ công)');
+        placeMeMarker(e.lngLat.lat, e.lngLat.lng, ' (chọn thủ công)', 'MANUAL_PIN');
         return;
       }
       pendingPoint = { lat: e.lngLat.lat, lng: e.lngLat.lng };
@@ -614,6 +615,14 @@
       }
     }
 
+    function isManualAnchorLocked() {
+      try {
+        const a = JSON.parse(localStorage.getItem('qiwai_gps_anchor') || 'null');
+        return !!(a && (a.source === 'MANUAL_SEARCH' || a.source === 'MANUAL_PIN' || a.source === 'SMART_AUTOCOMPLETE')
+          && (Date.now() - (a.ts || 0)) < 7 * 24 * 60 * 60 * 1000);
+      } catch (e) { return false; }
+    }
+
     let virtualGps = null;
     let lastSyncTime = 0;
     let lastUserPan = 0;
@@ -622,7 +631,26 @@
     function initVirtualGps() {
       if (virtualGps) return;
       virtualGps = new QiwaiVirtualGpsChip(sig => {
-        // 1. Cap nhat cham xanh + camera muot (chi bam theo khi user khong tu pan)
+        // 1. Neu user da ghim dia diem thu cong (<7 ngay) -> KHONG ghi de anchor/marker/camera; telemetry van gui binh thuong
+        if (isManualAnchorLocked()) {
+          const now0 = Date.now();
+          if (now0 - lastSyncTime >= 3000 && authToken) {
+            lastSyncTime = now0;
+            fetch('/api/v1/urban/telemetry', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...authHeaders() },
+              body: JSON.stringify({
+                lat: Number(sig.lat.toFixed(6)),
+                lng: Number(sig.lng.toFixed(6)),
+                spd: (typeof sig.speed === 'number') ? Number(sig.speed.toFixed(1)) : undefined,
+                acc: Math.round(sig.accuracy || 20)
+              }),
+              keepalive: true
+            }).catch(() => {});
+          }
+          return;
+        }
+        // 2. Cap nhat cham xanh + camera muot (chi bam theo khi user khong tu pan)
         try { localStorage.setItem('qiwai_gps_anchor', JSON.stringify({ lat: sig.lat, lng: sig.lng, tag: '', ts: Date.now() })); } catch (e) {}
         if (meMarker) meMarker.setLngLat([sig.lng, sig.lat]);
         if (Date.now() - lastUserPan > 10000) {
