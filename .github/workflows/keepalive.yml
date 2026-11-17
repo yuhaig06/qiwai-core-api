@@ -1,0 +1,20 @@
+name: Keep Render Awake
+
+# Ping /health dinh ky de Render free khong bi ngu (spin down sau ~15 phut khong co request)
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # moi 5 phut
+  workflow_dispatch: {}      # cho phep chay tay tu GitHub UI
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: |
+          for i in 1 2 3; do
+            curl -fsS --max-time 60 https://qiwai-core-api.onrender.com/health && exit 0
+            echo "Attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          exit 1
