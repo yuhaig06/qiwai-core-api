@@ -698,6 +698,17 @@
       }
     }
 
+    function distMFromCenter(lat, lng) {
+      const c = map.getCenter();
+      const R = 6371000, toRad = d => d * Math.PI / 180;
+      const dLat = toRad(lat - c.lat), dLng = toRad(lng - c.lng);
+      const h = Math.sin(dLat/2)**2 + Math.cos(toRad(c.lat))*Math.cos(toRad(lat))*Math.sin(dLng/2)**2;
+      return 2 * R * Math.asin(Math.sqrt(h));
+    }
+    function fmtDist(m) {
+      return m < 1000 ? Math.round(m) + ' m' : (m/1000).toFixed(1) + ' km';
+    }
+
     // ===== Smart Autocomplete: Photon (OSM) + debounce 250ms + AbortController + location bias =====
     let searchDebounceTimer = null;
     let searchAbortController = null;
@@ -725,13 +736,28 @@
             listEl.style.display = 'block';
             return;
           }
+          const viewCenter = map.getCenter();
           listEl.innerHTML = currentSuggestions.map((item, idx) => {
             const p = item.properties || {};
+            const coords = item.geometry && item.geometry.coordinates;
+            const rlat = coords ? parseFloat(coords[1]) : null;
+            const rlng = coords ? parseFloat(coords[0]) : null;
+            // Ten chinh: uu tien name, fallback street/city
             const mainName = p.name || p.street || p.city || query;
-            const subText = [p.street, p.district, p.city, p.state, p.country]
+            // Dia chi day du: so nha + duong, phuong/quan, tinh/TP, quoc gia
+            const addrParts = [];
+            if (p.housenumber && p.street) addrParts.push(p.housenumber + ' ' + p.street);
+            else if (p.street && p.name) addrParts.push(p.street);
+            const subText = [p.district, p.city, p.state, p.country]
               .filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(', ');
+            // Khoang cach tu tam ban do hien tai (giong "cach ban X km" cua Google Maps)
+            let distHtml = '';
+            if (rlat !== null && rlng !== null) {
+              const d = distMFromCenter(rlat, rlng);
+              distHtml = '<span style="color:#38bdf8;font-size:11px;margin-left:6px;">cách ' + fmtDist(d) + '</span>';
+            }
             return '<li onclick="pickSuggestion(' + idx + ')" style="padding:10px 12px;border-radius:8px;cursor:pointer;border-bottom:1px solid rgba(51,65,85,.4);">'
-              + '<div style="color:#f8fafc;font-weight:600;font-size:13.5px;">📍 ' + escapeHtml(mainName) + '</div>'
+              + '<div style="color:#f8fafc;font-weight:600;font-size:13.5px;">📍 ' + escapeHtml(mainName) + distHtml + '</div>'
               + '<div style="color:#94a3b8;font-size:11.5px;margin-top:2px;">' + escapeHtml(subText) + '</div></li>';
           }).join('');
           listEl.style.display = 'block';
