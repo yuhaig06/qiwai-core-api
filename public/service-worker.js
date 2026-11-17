@@ -1,5 +1,5 @@
 // QIWAI Service Worker — cache shell tinh, API luon goi mang
-const CACHE_NAME = 'qiwai-v24';
+const CACHE_NAME = 'qiwai-v25';
 const SHELL = ['/', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -20,16 +20,22 @@ self.addEventListener('fetch', (e) => {
   // API: luon network, khong cache (du lieu song can real-time)
   if (url.pathname.startsWith('/api/')) return;
 
-  // Static: cache-first, fallback network
+  // Static: cache-first, fallback network; server chet -> fallback cache, khong spam console
   e.respondWith(
-    caches.match(e.request).then((cached) => {
-      return cached || fetch(e.request).then((res) => {
+    (async () => {
+      const cached = await caches.match(e.request);
+      if (cached) return cached;
+      try {
+        const res = await fetch(e.request);
         if (res.ok && e.request.method === 'GET') {
           const clone = res.clone();
           caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
         }
         return res;
-      });
-    })
+      } catch (err) {
+        const fallback = await caches.match(e.request.mode === 'navigate' ? '/' : e.request);
+        return fallback || Response.error();
+      }
+    })()
   );
 });

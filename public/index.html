@@ -520,6 +520,7 @@
     // Dat cham xanh "vi tri cua toi" + doan khu vuc gan nhat (dung chung GPS & click tay)
     function placeMeMarker(lat, lng, acc) {
       acc = acc || '';
+      try { localStorage.setItem('qiwai_gps_anchor', JSON.stringify({ lat, lng, tag: acc, ts: Date.now() })); } catch (e) {}
       const statusEl = document.getElementById('urbanStatus');
       map.flyTo({ center: [lng, lat], zoom: 15 }, { duration: 1200 });
       if (meMarker) meMarker.remove();
@@ -598,6 +599,7 @@
       if (virtualGps) return;
       virtualGps = new QiwaiVirtualGpsChip(sig => {
         // 1. Cap nhat cham xanh + camera muot (chi bam theo khi user khong tu pan)
+        try { localStorage.setItem('qiwai_gps_anchor', JSON.stringify({ lat: sig.lat, lng: sig.lng, tag: '', ts: Date.now() })); } catch (e) {}
         if (meMarker) meMarker.setLngLat([sig.lng, sig.lat]);
         if (Date.now() - lastUserPan > 10000) {
           map.easeTo({ center: [sig.lng, sig.lat], duration: 800 });
@@ -621,65 +623,48 @@
       });
     }
 
-    // Dinh vi vi tri hien tai: GPS chay nen + cho phep bam chon thu cong tren ban do
-    function locateMe() {
+    // Dinh vi vi tri hien tai: Chip GPS ao 3 tang — Cache -> IP -> GPS that (ngam)
+    async function locateMe() {
       const statusEl = document.getElementById('urbanStatus');
-      showToast('Đang xin quyền vị trí GPS...', 'info');
-      if (!window.isSecureContext || !navigator.geolocation) {
-        statusEl.innerHTML = '<span class="text-warning">⚠️ Trình duyệt chỉ cho định vị trên HTTPS.</span>';
-        showToast('GPS chỉ hoạt động trên HTTPS — hãy mở link trycloudflare hoặc chờ deploy Render.', 'warning');
-        return;
-      }
-      // Chan doan quyen dinh vi truoc khi request
-      if (navigator.permissions && navigator.permissions.query) {
-        navigator.permissions.query({ name: 'geolocation' }).then(p => {
-          console.log('[QIWAI GPS] permission state:', p.state);
-          statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang lấy vị trí GPS... (quyền: ' + p.state + ')';
-        }).catch(() => {});
-      }
-      statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang lấy vị trí GPS... <span class="text-muted">(hoặc bấm vào bản đồ để chọn vị trí thủ công)</span>';
-      // Mo che do chon vi tri bang click trong 60s — laptop dinh vi cham van dung duoc ngay
+      showToast('Đang định vị...', 'info');
+
+      // Che do chon vi tri bang click trong 60s — luon co du phong thu cong
       manualPickMode = true;
       clearTimeout(manualPickTimer);
       manualPickTimer = setTimeout(() => { manualPickMode = false; }, 60000);
-      // Thuat toan 2 buoc: GPS do chinh xac cao (mobile co chip GPS) -> fallback Wi-Fi/IP (laptop/PC)
-      function onGpsSuccess(pos) {
-        const lat = pos.coords.latitude, lng = pos.coords.longitude;
-        const acc = pos.coords.accuracy ? ' (±' + Math.round(pos.coords.accuracy) + 'm)' : '';
-        console.log('[QIWAI GPS] fix:', lat, lng, 'acc:', pos.coords.accuracy, 'speed:', pos.coords.speed);
-        manualPickMode = false;
-        placeMeMarker(lat, lng, acc);
+
+      // TANG 1 (~5ms): toa do cache gan nhat (<30 phut) — hien ngay lap tuc
+      let haveFreshAnchor = false;
+      try {
+        const cached = localStorage.getItem('qiwai_gps_anchor');
+        if (cached) {
+          const p = JSON.parse(cached);
+          if (typeof p.lat === 'number' && typeof p.lng === 'number' && (Date.now() - (p.ts || 0)) < 30 * 60 * 1000) {
+            placeMeMarker(p.lat, p.lng, p.tag || ' (vị trí đã lưu)');
+            haveFreshAnchor = true;
+          }
+        }
+      } catch (e) {}
+
+      // TANG 2 (~150ms): IP Geolocation — chay nhanh tren laptop/PC (sai so ~cap thanh pho)
+      if (!haveFreshAnchor) {
+        try {
+          const res = await fetch('https://ipwho.is/');
+          const data = await res.json();
+          if (data && data.success && typeof data.latitude === 'number') {
+            placeMeMarker(data.latitude, data.longitude, ' (≈' + (data.city || 'khu vực IP') + ' — sai số vài km)');
+          }
+        } catch (e) { /* mang chan ipwho.is -> bo qua */ }
+      }
+
+      // TANG 3 (ngam): chip GPS that — mobile lock chinh xac, laptop tu cai thien dan
+      if (window.isSecureContext && navigator.geolocation) {
         initVirtualGps();
         virtualGps.start();
+        statusEl.innerHTML = '<span class="text-info">Đã đặt vị trí ước lượng — GPS thật đang tinh chỉnh ngầm...</span>';
+      } else {
+        statusEl.innerHTML = '<span class="text-muted">Vị trí ước lượng qua IP — bấm bản đồ để chọn chính xác.</span>';
       }
-      function onGpsFinalFail(err) {
-        const msgs = {
-          1: 'Bạn đã từ chối quyền vị trí — bấm icon ổ khóa trên thanh địa chỉ để bật lại.',
-          2: 'Không bắt được tín hiệu GPS — ra ngoài trời thoáng hoặc bật Location trên máy.',
-          3: 'Hết thời gian chờ GPS.'
-        };
-        manualPickMode = false;
-        statusEl.innerHTML = '<span class="text-danger">❌ ' + (msgs[err.code] || err.message) + ' — bấm "Vị trí của tôi" rồi click bản đồ để chọn thủ công.</span>';
-        showToast(msgs[err.code] || 'Không lấy được GPS', 'danger');
-      }
-      // Buoc 2: fallback Wi-Fi/IP — laptop khong co chip GPS se lay ngay toa do mang
-      function tryWifiFallback() {
-        statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang định vị qua Wi-Fi/mạng...';
-        navigator.geolocation.getCurrentPosition(onGpsSuccess, onGpsFinalFail, {
-          enableHighAccuracy: false,
-          timeout: 8000,
-          maximumAge: 60000
-        });
-      }
-      // Buoc 1: GPS chat luong cao, cho toi da 5s (mobile lock nhanh, laptop se rot xuong fallback)
-      navigator.geolocation.getCurrentPosition(onGpsSuccess, function (err) {
-        if (err.code === 1) return onGpsFinalFail(err); // tu choi quyen -> khong retry
-        tryWifiFallback();
-      }, {
-        enableHighAccuracy: true,
-        timeout: 5000,
-        maximumAge: 0
-      });
     }
 
     // Quet theo bbox bat ky: label = ten vung, bbox = "minLat,minLng,maxLat,maxLng", fly = bounds [lng,lat]
