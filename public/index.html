@@ -703,16 +703,20 @@
       statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang tìm "' + escapeHtml(query) + '"...';
 
       try {
-        const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=vi,en&q=' + encodeURIComponent(query);
+        // viewbox bias vung Viet Nam (lng 102-110, lat 8-24): duong/phuong xa VN len hang truoc,
+        // quoc te van tim duoc binh thuong. Lay them 5 ket qua de chon dung duong pho.
+        const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=vi,en'
+          + '&viewbox=102.0,23.5,110.0,8.0&q=' + encodeURIComponent(query);
         const res = await fetch(url, { headers: { 'Accept-Language': 'vi,en' } });
         const results = await res.json();
 
         if (!results || results.length === 0) {
-          statusEl.innerHTML = '<span class="text-warning">Không tìm thấy địa điểm — thử gõ rõ hơn (VD: "Quận 1", "Hồ Hoàn Kiếm").</span>';
+          statusEl.innerHTML = '<span class="text-warning">Không tìm thấy địa điểm — thử gõ rõ hơn (VD: "Nguyễn Huệ Quận 1", "Hồ Hoàn Kiếm").</span>';
           return;
         }
 
-        const place = results[0];
+        // Nhieu ket qua -> uu tien dia danh loai "road/house" (duong pho) hon vung hanh chinh chung chung
+        const place = results.find(r => /road|street|house|building/i.test(r.type || '') || /road|street/i.test(r.class || '')) || results[0];
         const lng = parseFloat(place.lon);
         const lat = parseFloat(place.lat);
         const name = place.display_name ? place.display_name.split(',').slice(0, 3).join(',') : query;
