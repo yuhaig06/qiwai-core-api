@@ -1,5 +1,5 @@
 # Render Blueprint - QIWAI Core API
-# Deploy: https://render.com -> New -> Blueprint -> chon repo GitHub
+# Deploy: https://render.com -> New -> Blueprint -> chon repo GitHub yuhaig06/qiwai-core-api
 services:
   - type: web
     name: qiwai-core-api
@@ -7,13 +7,26 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: node src/server.js
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
-      # Dien cac key that trong Render Dashboard -> Environment:
-      # DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
+      - key: PORT
+        value: "3000"
+      # --- Dien khi deploy (Render se hoi tung key) ---
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "4000"
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        value: "qiwai_core"
       - key: DB_SSL
         value: "true"
-      # Dien cac key that trong Render Dashboard -> Environment:
-      # DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
-      # GEMINI_API_KEY, JWT_SECRET
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
