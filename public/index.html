@@ -267,8 +267,7 @@
           ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0]);
       }
     }
-    map.on('load', patchStyleNulls);
-    map.on('styledata', patchStyleNulls);
+    map.on('load', patchStyleNulls); // chi chay 1 lan: setFilter trong styledata gay loop lam map treo
 
     function escapeHtml(str) {
       return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
