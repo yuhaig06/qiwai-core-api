@@ -319,6 +319,19 @@
       document.getElementById('mapLock').style.display = (authUser && authToken) ? 'none' : 'flex';
     }
 
+    function maskUserId(id) {
+      if (!id) return '';
+      const str = String(id);
+      if (str.includes('@')) {
+        const [u, d] = str.split('@');
+        return (u.length > 2 ? u.slice(0, 2) + '***' : u.slice(0, 1) + '***') + '@' + d;
+      }
+      // SDT: 035***995 — chi lo 3 so dau + 3 so cuoi
+      const digits = str.replace(/D/g, '');
+      if (digits.length >= 7) return digits.slice(0, 3) + '***' + digits.slice(-3);
+      return str.slice(0, 2) + '***';
+    }
+
     function renderAuth() {
       const guest = document.getElementById('authGuest');
       const userBox = document.getElementById('authUser');
@@ -327,9 +340,9 @@
       if (authUser && authToken) {
         guest.classList.add('d-none');
         userBox.classList.remove('d-none');
-        navUser.innerText = authUser.phone_or_email;
+        navUser.innerText = maskUserId(authUser.phone_or_email);
         navLogout.classList.remove('d-none');
-        document.getElementById('authUserName').innerText = authUser.phone_or_email;
+        document.getElementById('authUserName').innerText = maskUserId(authUser.phone_or_email);
         document.getElementById('authTrust').innerText = authUser.trust_score;
         updateMapLock();
       } else {
