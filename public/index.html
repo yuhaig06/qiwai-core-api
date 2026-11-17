@@ -31,6 +31,21 @@
     .qiwai-card { background: #111a2e; border: 1px solid #1e293b; border-radius: 14px; }
     .qiwai-card .card-title { font-size: .95rem; font-weight: 600; }
     .result-box { border-radius: 10px; font-size: .85rem; line-height: 1.45; display: none; }
+    .qiwai-profile { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 14px;
+      background: linear-gradient(135deg, rgba(56,189,248,.10), rgba(129,140,248,.10));
+      border: 1px solid rgba(148,163,184,.16); }
+    .qiwai-avatar { width: 46px; height: 46px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: .95rem; color: #fff; letter-spacing: .5px;
+      background: linear-gradient(135deg, #0ea5e9, #6366f1);
+      box-shadow: 0 4px 14px rgba(99,102,241,.4), inset 0 1px 0 rgba(255,255,255,.25); }
+    .qiwai-profile-info { min-width: 0; }
+    .qiwai-profile-name { font-weight: 600; font-size: .92rem; color: #f1f5f9;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .qiwai-profile-sub { font-size: .76rem; color: #94a3b8; margin-top: 2px; display: flex; align-items: center; gap: 4px; }
+    .qiwai-trust { display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; border-radius: 999px;
+      font-size: .72rem; font-weight: 700; background: rgba(16,185,129,.15); color: #34d399;
+      border: 1px solid rgba(16,185,129,.3); }
     .result-box.show { display: block; }
     .DANGEROUS { background: rgba(239,68,68,.15); border: 1px solid #ef4444; color: #fca5a5; }
     .SUSPICIOUS { background: rgba(245,158,11,.15); border: 1px solid #f59e0b; color: #fcd34d; }
@@ -92,8 +107,13 @@
                 </div>
               </div>
               <div id="authUser" class="d-none">
-                <p class="mb-1"><i class="bi bi-person-check-fill text-success"></i> <strong id="authUserName"></strong></p>
-                <p class="text-muted small mb-2">Uy tín: <span class="badge text-bg-info" id="authTrust">100</span></p>
+                <div class="qiwai-profile">
+                  <div class="qiwai-avatar" id="authAvatar">Q</div>
+                  <div class="qiwai-profile-info">
+                    <div class="qiwai-profile-name" id="authUserName"></div>
+                    <div class="qiwai-profile-sub"><i class="bi bi-stars"></i> Uy tín: <span class="qiwai-trust" id="authTrust">100</span></div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -327,7 +347,7 @@
         return (u.length > 2 ? u.slice(0, 2) + '***' : u.slice(0, 1) + '***') + '@' + d;
       }
       // SDT: 035***995 — chi lo 3 so dau + 3 so cuoi
-      const digits = str.replace(/D/g, '');
+      const digits = str.replace(/\D/g, '');
       if (digits.length >= 7) return digits.slice(0, 3) + '***' + digits.slice(-3);
       return str.slice(0, 2) + '***';
     }
@@ -343,6 +363,9 @@
         navUser.innerText = maskUserId(authUser.phone_or_email);
         navLogout.classList.remove('d-none');
         document.getElementById('authUserName').innerText = maskUserId(authUser.phone_or_email);
+        const rawId = String(authUser.phone_or_email || '');
+        const avText = rawId.includes('@') ? rawId[0].toUpperCase() : (rawId.replace(/\D/g, '').slice(-2) || 'Q');
+        document.getElementById('authAvatar').innerText = avText;
         document.getElementById('authTrust').innerText = authUser.trust_score;
         updateMapLock();
       } else {
