@@ -159,11 +159,15 @@
       <!-- BAN DO -->
       <div class="col-lg-8 map-col">
         <div id="map" class="rounded-4 border border-secondary"></div>
-        <div class="map-search">
-          <input type="text" id="global-place-input"
-            placeholder="Tìm địa điểm:..."
-            onkeydown="if(event.key==='Enter') searchPlaceGlobal()" />
-          <button onclick="searchPlaceGlobal()"><i class="bi bi-search"></i> Tìm</button>
+        <div class="map-search qiwai-search-wrapper">
+          <div style="display:flex;gap:6px;">
+            <input type="text" id="global-place-input" autocomplete="off"
+              placeholder="Tìm đường, trường học, địa điểm (VD: Điện Biên Phủ, Quận 1, Tokyo)..."
+              oninput="handleSmartSearchInput(this.value)"
+              onkeydown="if(event.key==='Enter') selectFirstSuggestion()" />
+            <button onclick="selectFirstSuggestion()"><i class="bi bi-search"></i> Tìm</button>
+          </div>
+          <ul id="search-suggestions-list" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:6px;background:rgba(15,23,42,.98);border:1px solid #334155;border-radius:10px;list-style:none;padding:4px;max-height:260px;overflow-y:auto;z-index:9999;box-shadow:0 10px 25px rgba(0,0,0,.5);"></ul>
         </div>
         <div id="mapLock" class="map-lock">
           <div class="lock-box">
@@ -657,7 +661,7 @@
       // Doc anchor 1 lan: MANUAL_SEARCH/MANUAL_PIN tuoi <7 ngay -> khoa chong IP/GPS ghi de
       let anchor = null;
       try { anchor = JSON.parse(localStorage.getItem('qiwai_gps_anchor') || 'null'); } catch (e) {}
-      const manualLocked = anchor && (anchor.source === 'MANUAL_SEARCH' || anchor.source === 'MANUAL_PIN')
+      const manualLocked = anchor && (anchor.source === 'MANUAL_SEARCH' || anchor.source === 'MANUAL_PIN' || anchor.source === 'SMART_AUTOCOMPLETE')
         && (Date.now() - (anchor.ts || 0)) < 7 * 24 * 60 * 60 * 1000;
 
       // TANG 1 (~5ms): toa do cache gan nhat (<30 phut) — hien ngay lap tuc
@@ -694,6 +698,80 @@
       }
     }
 
+    // ===== Smart Autocomplete: Photon (OSM) + debounce 250ms + AbortController + location bias =====
+    let searchDebounceTimer = null;
+    let searchAbortController = null;
+    let currentSuggestions = [];
+
+    function handleSmartSearchInput(rawText) {
+      const query = rawText.trim();
+      const listEl = document.getElementById('search-suggestions-list');
+      clearTimeout(searchDebounceTimer);
+      if (query.length < 2) { listEl.style.display = 'none'; return; }
+
+      searchDebounceTimer = setTimeout(async () => {
+        if (searchAbortController) searchAbortController.abort();
+        searchAbortController = new AbortController();
+        try {
+          const c = map.getCenter();
+          const url = 'https://photon.komoot.io/api/?q=' + encodeURIComponent(query)
+            + '&lat=' + c.lat + '&lon=' + c.lng + '&limit=5';
+          const res = await fetch(url, { signal: searchAbortController.signal });
+          const data = await res.json();
+          currentSuggestions = data.features || [];
+
+          if (currentSuggestions.length === 0) {
+            listEl.innerHTML = '<li style="padding:10px 12px;color:#94a3b8;font-size:13px;">Không tìm thấy gợi ý — Enter để tìm toàn cầu.</li>';
+            listEl.style.display = 'block';
+            return;
+          }
+          listEl.innerHTML = currentSuggestions.map((item, idx) => {
+            const p = item.properties || {};
+            const mainName = p.name || p.street || p.city || query;
+            const subText = [p.street, p.district, p.city, p.state, p.country]
+              .filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(', ');
+            return '<li onclick="pickSuggestion(' + idx + ')" style="padding:10px 12px;border-radius:8px;cursor:pointer;border-bottom:1px solid rgba(51,65,85,.4);">'
+              + '<div style="color:#f8fafc;font-weight:600;font-size:13.5px;">📍 ' + escapeHtml(mainName) + '</div>'
+              + '<div style="color:#94a3b8;font-size:11.5px;margin-top:2px;">' + escapeHtml(subText) + '</div></li>';
+          }).join('');
+          listEl.style.display = 'block';
+        } catch (e) {
+          if (e.name !== 'AbortError') console.warn('[QIWAI Search]', e);
+        }
+      }, 250);
+    }
+
+    function pickSuggestion(index) {
+      const item = currentSuggestions[index];
+      if (!item) return;
+      const coords = item.geometry && item.geometry.coordinates;
+      if (!coords) return;
+      const lng = parseFloat(coords[0]), lat = parseFloat(coords[1]);
+      const p = item.properties || {};
+      const label = [p.name, p.street, p.city].filter(Boolean).join(', ') || 'địa điểm đã chọn';
+
+      document.getElementById('global-place-input').value = label;
+      document.getElementById('search-suggestions-list').style.display = 'none';
+      currentSuggestions = [];
+
+      map.flyTo({ center: [lng, lat], zoom: 16.5, pitch: 50, duration: 1400 });
+      placeMeMarker(lat, lng, ' (đã ghim: ' + label.slice(0, 40) + ')', 'SMART_AUTOCOMPLETE');
+      loadUrbanPulses(lat, lng);
+      showToast('Đã ghim: ' + label, 'success');
+    }
+
+    function selectFirstSuggestion() {
+      if (currentSuggestions.length > 0) { pickSuggestion(0); return; }
+      searchPlaceGlobal();
+    }
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.qiwai-search-wrapper')) {
+        const listEl = document.getElementById('search-suggestions-list');
+        if (listEl) listEl.style.display = 'none';
+      }
+    });
+
     // Tim kiem dia diem toan cau qua Nominatim/OSM (mien phi, ho tro tieng Viet)
     async function searchPlaceGlobal() {
       const input = document.getElementById('global-place-input');
@@ -725,7 +803,7 @@
         map.flyTo({ center: [lng, lat], zoom: 16, pitch: 50, duration: 1500 });
 
         // 2. Dat cham xanh + KHOA cung lam MANUAL_SEARCH (sai so ~0m)
-        placeMeMarker(lat, lng, ' (đã ghim: ' + name.slice(0, 40) + ')', 'MANUAL_SEARCH');
+        placeMeMarker(lat, lng, ' (đã ghim: ' + name.slice(0, 40) + ')', 'SMART_AUTOCOMPLETE');
 
         // 3. Quet ngay cac diem ngo quanh vi tri moi tim
         loadUrbanPulses(lat, lng);
