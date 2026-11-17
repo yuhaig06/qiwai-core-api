@@ -37,6 +37,21 @@
     .SAFE { background: rgba(16,185,129,.15); border: 1px solid #10b981; color: #6ee7b7; }
     .pulse-highlight { border-color: #38bdf8 !important; box-shadow: 0 0 0 1px #38bdf8; }
     .maplibregl-popup-content { color: #0f172a; border-radius: 10px; }
+    .map-search {
+      position: absolute; top: 10px; left: 10px; right: 60px; z-index: 5;
+      display: flex; gap: 6px;
+    }
+    .map-search input {
+      flex: 1; padding: 9px 12px; border-radius: 10px;
+      border: 1px solid #334155; background: rgba(15,23,42,.92);
+      color: #f8fafc; backdrop-filter: blur(4px); font-size: .9rem;
+    }
+    .map-search input:focus { outline: none; border-color: #38bdf8; }
+    .map-search button {
+      padding: 9px 16px; border-radius: 10px; border: none;
+      background: #0284c7; color: #fff; font-weight: 600; font-size: .9rem;
+    }
+    .map-search button:hover { background: #0369a1; }
     @media (max-width: 991.98px) {
       .qiwai-shell { height: auto; }
       .map-col { height: 60vh; min-height: 320px; }
@@ -144,6 +159,12 @@
       <!-- BAN DO -->
       <div class="col-lg-8 map-col">
         <div id="map" class="rounded-4 border border-secondary"></div>
+        <div class="map-search">
+          <input type="text" id="global-place-input"
+            placeholder="Tìm địa điểm: Quận 1, Hà Nội, Tokyo, Shibuya..."
+            onkeydown="if(event.key==='Enter') searchPlaceGlobal()" />
+          <button onclick="searchPlaceGlobal()"><i class="bi bi-search"></i> Tìm</button>
+        </div>
         <div id="mapLock" class="map-lock">
           <div class="lock-box">
             <i class="bi bi-lock-fill fs-2 text-info"></i>
@@ -518,9 +539,9 @@
     let manualPickTimer = null;
 
     // Dat cham xanh "vi tri cua toi" + doan khu vuc gan nhat (dung chung GPS & click tay)
-    function placeMeMarker(lat, lng, acc) {
+    function placeMeMarker(lat, lng, acc, source) {
       acc = acc || '';
-      try { localStorage.setItem('qiwai_gps_anchor', JSON.stringify({ lat, lng, tag: acc, ts: Date.now() })); } catch (e) {}
+      try { localStorage.setItem('qiwai_gps_anchor', JSON.stringify({ lat, lng, tag: acc, ts: Date.now(), source: source || '' })); } catch (e) {}
       const statusEl = document.getElementById('urbanStatus');
       map.flyTo({ center: [lng, lat], zoom: 15 }, { duration: 1200 });
       if (meMarker) meMarker.remove();
@@ -633,18 +654,24 @@
       clearTimeout(manualPickTimer);
       manualPickTimer = setTimeout(() => { manualPickMode = false; }, 60000);
 
+      // Doc anchor 1 lan: MANUAL_SEARCH/MANUAL_PIN tuoi <7 ngay -> khoa chong IP/GPS ghi de
+      let anchor = null;
+      try { anchor = JSON.parse(localStorage.getItem('qiwai_gps_anchor') || 'null'); } catch (e) {}
+      const manualLocked = anchor && (anchor.source === 'MANUAL_SEARCH' || anchor.source === 'MANUAL_PIN')
+        && (Date.now() - (anchor.ts || 0)) < 7 * 24 * 60 * 60 * 1000;
+
       // TANG 1 (~5ms): toa do cache gan nhat (<30 phut) — hien ngay lap tuc
       let haveFreshAnchor = false;
-      try {
-        const cached = localStorage.getItem('qiwai_gps_anchor');
-        if (cached) {
-          const p = JSON.parse(cached);
-          if (typeof p.lat === 'number' && typeof p.lng === 'number' && (Date.now() - (p.ts || 0)) < 30 * 60 * 1000) {
-            placeMeMarker(p.lat, p.lng, p.tag || ' (vị trí đã lưu)');
-            haveFreshAnchor = true;
-          }
-        }
-      } catch (e) {}
+      if (anchor && typeof anchor.lat === 'number' && typeof anchor.lng === 'number'
+          && (Date.now() - (anchor.ts || 0)) < 30 * 60 * 1000) {
+        placeMeMarker(anchor.lat, anchor.lng, anchor.tag || ' (vị trí đã lưu)', anchor.source);
+        haveFreshAnchor = true;
+      }
+
+      if (manualLocked) {
+        statusEl.innerHTML = '<span class="text-info">📌 Đã ghim địa điểm thủ công — GPS/IP sẽ không ghi đè trong 7 ngày.</span>';
+        return;
+      }
 
       // TANG 2 (~150ms): IP Geolocation — chay nhanh tren laptop/PC (sai so ~cap thanh pho)
       if (!haveFreshAnchor) {
@@ -664,6 +691,43 @@
         statusEl.innerHTML = '<span class="text-info">Đã đặt vị trí ước lượng — GPS thật đang tinh chỉnh ngầm...</span>';
       } else {
         statusEl.innerHTML = '<span class="text-muted">Vị trí ước lượng qua IP — bấm bản đồ để chọn chính xác.</span>';
+      }
+    }
+
+    // Tim kiem dia diem toan cau qua Nominatim/OSM (mien phi, ho tro tieng Viet)
+    async function searchPlaceGlobal() {
+      const input = document.getElementById('global-place-input');
+      const query = input.value.trim();
+      if (!query) return;
+      const statusEl = document.getElementById('urbanStatus');
+      statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang tìm "' + escapeHtml(query) + '"...';
+
+      try {
+        const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=vi,en&q=' + encodeURIComponent(query);
+        const res = await fetch(url, { headers: { 'Accept-Language': 'vi,en' } });
+        const results = await res.json();
+
+        if (!results || results.length === 0) {
+          statusEl.innerHTML = '<span class="text-warning">Không tìm thấy địa điểm — thử gõ rõ hơn (VD: "Quận 1", "Hồ Hoàn Kiếm").</span>';
+          return;
+        }
+
+        const place = results[0];
+        const lng = parseFloat(place.lon);
+        const lat = parseFloat(place.lat);
+        const name = place.display_name ? place.display_name.split(',').slice(0, 3).join(',') : query;
+
+        // 1. Bay thang toi dia diem, goc nhin 3D
+        map.flyTo({ center: [lng, lat], zoom: 16, pitch: 50, duration: 1500 });
+
+        // 2. Dat cham xanh + KHOA cung lam MANUAL_SEARCH (sai so ~0m)
+        placeMeMarker(lat, lng, ' (đã ghim: ' + name.slice(0, 40) + ')', 'MANUAL_SEARCH');
+
+        // 3. Quet ngay cac diem ngo quanh vi tri moi tim
+        loadUrbanPulses(lat, lng);
+        showToast('Đã tìm thấy: ' + name, 'success');
+      } catch (err) {
+        statusEl.innerHTML = '<span class="text-danger">❌ Lỗi kết nối dịch vụ tìm kiếm — thử lại nhé.</span>';
       }
     }
 
